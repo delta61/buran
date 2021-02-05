@@ -7,6 +7,10 @@ if ( ! definde('INCLUDED')) die();
 		<subject></subject>
 		<captcha></captcha>
 		<mailto></mailto>
+		<mailto></mailto>
+		<mailto></mailto>
+		<mailto></mailto>
+		<mailto></mailto>
 	</prms>
 	
 	<fields>
