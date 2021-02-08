@@ -1,8 +1,8 @@
 <?php
 /**
  * Buran_0
- * @version 3.2
- * @date 20.10.2020
+ * @version 3.3-beta
+ * @date 08.02.2021
  * @author <sergey.it@delta-ltd.ru>
  * @copyright 2020 DELTA http://delta-ltd.ru/
  * @size 56000
@@ -12,7 +12,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.2');
+$bu = new BURAN('3.3-beta');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -133,6 +133,8 @@ class BURAN
 			'etalon_db_file' => '/etalon_db_dump.sql',
 			'etalon_fls_dir' => '/files',
 			'etalon_lst_dir' => '/list',
+
+			'log_dir' => '/log',
 
 			'max_etalon_txt_file' => 52428800, //1024*1024*50
 		),
@@ -1665,16 +1667,20 @@ $p .= '</td>
 		$this->cms();
 		$this->db_access();
 
-		if (is_dir($this->droot . '/log/sendmail/')){
-			foreach (glob($this->droot . '/log/sendmail/') as $file){
-				$lines = file($this->droot . '/log/sendmail/' . $file);
-				for ($i=count($lines)-1;$i=0;$i--){
-					if (strpos($lines[$i], ';-;') !== false) {
-						$sendmail_log["$file"] = substr($lines[$i], 0, 10);
-						break;
-					}	
+		$log_dir = $this->broot.$this->conf('log_dir').'/sendmail/';
+		$logs = glob($log_dir.'*');
+		if ($logs && is_array($logs)) {
+			foreach ($logs AS $file) {
+				$log = basename($file);
+				$sendmail_log[$log] = false;
+				$fh = fopen($file,'rb');
+				if ( ! $fh) continue;
+				$last_er = 0;
+				while (($row = fgetcsv($fh)) !== false) {
+					$row = str_getcsv($row[0],';');
+					if ($row[1] == '-') $last_er = $row[0];
 				}
-				
+				$sendmail_log[$log] = $last_er;
 			}
 		}
 
