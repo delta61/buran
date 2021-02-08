@@ -1665,7 +1665,7 @@ $p .= '</td>
 		$this->cms();
 		$this->db_access();
 
-		if (is_dir($this->droot . '/log/sendmail/'){
+		if (is_dir($this->droot . '/log/sendmail/')){
 			foreach (glob($this->droot . '/log/sendmail/') as $file){
 				$lines = file($this->droot . '/log/sendmail/' . $file);
 				for ($i=count($lines)-1;$i=0;$i--){
