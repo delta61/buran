@@ -1669,7 +1669,7 @@ $p .= '</td>
 			foreach (glob($this->droot . '/log/sendmail/') as $file){
 				$lines = file($this->droot . '/log/sendmail/' . $file);
 				for ($i=count($lines)-1;$i=0;$i--){
-					if (strpos(';-;', $lines[$i]) !== false) {
+					if (strpos($lines[$i], ';-;') !== false) {
 						$sendmail_log["$file"] = substr($lines[$i], 0, 10);
 						break;
 					}	
