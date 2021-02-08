@@ -1665,6 +1665,19 @@ $p .= '</td>
 		$this->cms();
 		$this->db_access();
 
+		if (is_dir($this->droot . '/log/sendmail/'){
+			foreach (glob($this->droot . '/log/sendmail/') as $file){
+				$lines = file($this->droot . '/log/sendmail/' . $file);
+				for ($i=count($lines)-1;$i=0;$i--){
+					if (strpos(';-;', $lines[$i]) !== false) {
+						$sendmail_log["$file"] = substr($lines[$i], 0, 10);
+						break;
+					}	
+				}
+				
+			}
+		}
+
 		$pi = $this->getphpinfo(INFO_CONFIGURATION);
 		preg_match_all("/\<td.*\>open_basedir\<\/td\>(\<td.*\>(.*)\<\/td\>)(\<td.*\>(.*)\<\/td\>)/U",$pi,$mtchs);
 
@@ -1675,6 +1688,7 @@ $p .= '</td>
 			'php_ver'        => PHP_VERSION,
 			'php_uname'      => php_uname(),
 			'php_sapi'       => php_sapi_name(),
+			'sendmail_log'   => $sendmail_log
 			'ws'             => $this->http.$this->www.$this->domain,
 			'curl'           => $this->curl_ext,
 			'sock'           => $this->sock_ext,
