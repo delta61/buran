@@ -1,14 +1,14 @@
 <?php
 /**
  * seoModule
- * @version 6.39
+ * @version 6.4-beta
  * @date 09.02.2021
  * @author <sergey.it@delta-ltd.ru>
  * @copyright 2021 DELTA http://delta-ltd.ru/
  * @size 94444
  */
 
-$bsm = new buran_seoModule('6.39');
+$bsm = new buran_seoModule('6.4-beta');
 
 if ( ! $bsm->module_mode) {
 	$bsm->init();
