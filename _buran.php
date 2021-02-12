@@ -978,7 +978,10 @@ class BURAN
 				$dump .= $row2[1].";"."\n\n";
 			}
 
-			$dbres2 = $this->db->query("SELECT * FROM `{$row[0]}`");
+			$q = "SELECT * FROM `{$row[0]}`";
+			if ($state['offset']) $q .= " LIMIT 99999999999 OFFSET ".$state['offset']."";
+
+			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
 				$this->res['errors'][] = array('num'=>'0106');
 				continue;
