@@ -967,6 +967,21 @@ class BURAN
 			if ( ! $state['offset']) {
 				$dump .= "# ---------------------------- `".$row[0]."`"."\n\n";
 
+				$dbres2 = $this->db->query("SELECT *
+					FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+					WHERE TABLE_NAME=N'{$row[0]}'
+					ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
+				if ( ! $dbres2) {
+					$this->res['errors'][] = array('num'=>'0112');
+					continue;
+				}
+				while ($row2 = $dbres2->fetch_row()) {
+					$dump .= "===";
+					$dump .= $row2['COLUMN_NAME'].' / '.$row2['CONSTRAINT_NAME']."\n";
+					$dump .= "===";
+				}
+				break;
+
 				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$row[0]}`");
 				if ( ! $dbres2) {
 					$this->res['errors'][] = array('num'=>'0105');
@@ -1380,6 +1395,34 @@ class BURAN
 							$this->mdir.$dir.'/'
 						) !== 0
 					)
+					/*|| strpos(
+						$nextdir.$file,
+						'/bitrix/backup/'
+					) === 0
+					|| strpos(
+						$nextdir.$file,
+						'/bitrix/managed_cache/'
+					) === 0
+					|| strpos(
+						$nextdir.$file,
+						'/bitrix/cache/'
+					) === 0
+					|| strpos(
+						$nextdir.$file,
+						'/bitrix/html_pages/'
+					) === 0
+					|| strpos(
+						$nextdir.$file,
+						'/upload/resize_cache/'
+					) === 0
+					|| strpos(
+						$nextdir.$file,
+						'/upload/tmp/'
+					) === 0
+					|| strpos(
+						$nextdir.$file,
+						'/upload/iblock/'
+					) === 0*/
 				) {
 					continue;
 				}
@@ -1871,6 +1914,17 @@ $p .= '</td>
 			$this->cms_name = '';
 			return true;
 		}
+
+		ob_start();
+		@include_once($this->droot.'/bitrix/modules/main/classes/general/version.php');
+		ob_end_clean();
+		if (defined('SM_VERSION')) {
+			$this->cms      = 'bitrix';
+			$this->cms_ver  = SM_VERSION;
+			$this->cms_date = SM_VERSION_DATE;
+			$this->cms_name = '';
+			return true;
+		}
 		return false;
 	}
 
@@ -1971,6 +2025,17 @@ $p .= '</td>
 			$this->db_user = $databases['user'];
 			$this->db_pwd  = $databases['pass'];
 			$this->db_name = substr($databases['path'],1);
+			return true;
+		}
+
+		if ($this->cms == 'bitrix') {
+			ob_start();
+			@include_once($this->droot.'/bitrix/php_interface/dbconn.php');
+			ob_end_clean();
+			$this->db_host = $DBHost;
+			$this->db_user = $DBLogin;
+			$this->db_pwd  = $DBPassword;
+			$this->db_name = $DBName;
 			return true;
 		}
 		return false;
