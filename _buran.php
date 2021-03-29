@@ -921,6 +921,7 @@ class BURAN
 			$state = array(
 				'tbl'    => false,
 				'offset' => 0,
+				'keys'   => '',
 			);
 		}
 
@@ -948,9 +949,11 @@ class BURAN
 			return $res;
 		}
 
+		$limit = intval($this->conf('maxitems','db'));
+		if ( ! $limit) $limit = 9999;
 		$this->max['cntr'][0] = array(
 			'nm'  => 'maxitems',
-			'max' => $this->conf('maxitems','db'),
+			'max' => $limit,
 			'cnt' => 0,
 		);
 
@@ -975,12 +978,17 @@ class BURAN
 					$this->res['errors'][] = array('num'=>'0112');
 					continue;
 				}
-				while ($row2 = $dbres2->fetch_row()) {
-					$dump .= "===";
-					$dump .= $row2['COLUMN_NAME'].' / '.$row2['CONSTRAINT_NAME']."\n";
-					$dump .= "===";
+				$keys = "";
+				$keys_nm = false;
+				while ($row2 = $dbres2->fetch_assoc()) {
+					if (
+						$keys_nm
+						&& $keys_nm !== $row2['CONSTRAINT_NAME']
+					) break;
+					$keys_nm = $row2['CONSTRAINT_NAME'];
+					$keys .= ($keys?",":"")."`".$row2['COLUMN_NAME']."`";
 				}
-				break;
+				$state['keys'] = $keys;
 
 				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$row[0]}`");
 				if ( ! $dbres2) {
@@ -994,7 +1002,8 @@ class BURAN
 			}
 
 			$q = "SELECT * FROM `{$row[0]}`";
-			if ($state['offset']) $q .= " LIMIT 99999999999 OFFSET ".$state['offset']."";
+			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
+			$q .= " LIMIT ".$limit." OFFSET ".$state['offset'];
 
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
@@ -1005,7 +1014,6 @@ class BURAN
 			$ii = 0;
 			while ($row2 = $dbres2->fetch_assoc()) {
 				$ii++;
-				if ($ii <= $state['offset']) continue;
 				$this->max['cntr'][0]['cnt']++;
 
 				$dump .= "INSERT INTO `{$row[0]}` SET ";
@@ -1028,6 +1036,7 @@ class BURAN
 
 			if ( ! $this->max['flag']) {
 				$state['offset'] = 0;
+				$state['keys'] = '';
 			}
 
 			if ($this->max()) {
@@ -1049,8 +1058,8 @@ class BURAN
 			return $res;
 		}
 
-		$state['tbl']    = $ii_tbl;
-		$state['offset'] = $ii;
+		$state['tbl'] = $ii_tbl;
+		$state['offset'] += $ii;
 
 		if ($this->max['flag']) {
 			$res['max'] = true;
