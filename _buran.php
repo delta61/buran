@@ -1,18 +1,16 @@
 <?php
 /**
- * Buran_0
- * @version 3.3-beta
- * @date 08.02.2021
- * @author <sergey.it@delta-ltd.ru>
- * @copyright 2020 DELTA http://delta-ltd.ru/
- * @size 56000
+ * Buran
  *
+ * @copyright 2021 DELTA https://delta-ltd.ru/
+ * @link      https://github.com/delta61/buran.git
+ * @author    <sergey.it@delta-ltd.ru>
  */
 
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.3-beta');
+$bu = new BURAN('3.3');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -323,7 +321,7 @@ class BURAN
 					continue;
 				}
 
-				$fs = filesize($this->droot.$nextdir.$file);
+				$fs = filesize($this->droot.$file);
 
 				if (
 					$fs*0.9 >= $this->conf('files_backup_maxpartsize')
@@ -1003,7 +1001,7 @@ class BURAN
 
 			$q = "SELECT * FROM `{$row[0]}`";
 			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
-			$q .= " LIMIT ".$limit." OFFSET ".$state['offset'];
+			$q .= " LIMIT ".($limit+100)." OFFSET ".$state['offset'];
 
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
@@ -2445,4 +2443,16 @@ $p .= '</td>
 	}
 }
 // ----------------------------------------------
-// --------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----
