@@ -1,6 +1,6 @@
 <?php
 /**
- * Buran
+ * Buran_
  *
  * @copyright 2021 DELTA https://delta-ltd.ru/
  * @link      https://github.com/delta61/buran.git
