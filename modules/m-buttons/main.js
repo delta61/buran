@@ -22,9 +22,9 @@ document.body.appendChild(elem);
 
     // popup form
 var elem2 = document.createElement('div');
-elem2.innerHTML = '<a class="whatsapp btn" href="https://wa.me/79289602779" target="_blank"><i style=""></i></a>';
-elem2.innerHTML += '<div id="chatra-button" class="chatra btn" onclick="Chatra(\'show\');Chatra(\'openChat\', true);"></div>';
-elem2.innerHTML += '<div class="callback btn" onclick="showform()"></div>';
+elem2.innerHTML = '<a class="m-buttons-whatsapp m-buttons-btn" href="https://wa.me/79289602779" target="_blank"><i style=""></i></a>';
+elem2.innerHTML += '<div id="chatra-button" class="chatra m-buttons-btn" onclick="Chatra(\'show\');Chatra(\'openChat\', true);"></div>';
+elem2.innerHTML += '<div class="m-buttons-callback m-buttons-btn" onclick="showform()"></div>';
 elem2.id = "m-buttons-all";
 elem2.onclick = function () {
     // document.getElementById('m-buttons-all').style.display = "none";

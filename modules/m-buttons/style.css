@@ -42,16 +42,16 @@
 }
 
 
-.callback {
+.m-buttons-callback {
     background: #ec2b61 url('/_buran/modules/m-buttons/img/callback.svg') no-repeat 50%;
 }
 
-.callback:hover {
+.m-buttons-callback:hover {
     background-color: #d82053;
 }
 
 
-#m-buttons-all .btn {
+#m-buttons-all .m-buttons-btn {
     display:block;
     border-radius:30px;
     width:50px;
@@ -62,12 +62,12 @@
     transition: ease 0.2s;
 }
 
-#m-buttons-all .whatsapp {
+#m-buttons-all .m-buttons-whatsapp {
     background:  #01e675 url('/_buran/modules/m-buttons/img/whatsapp.svg') no-repeat 50%;
     background-size: 50px;
 }
 
-#m-buttons-all .whatsapp:hover {
+#m-buttons-all .m-buttons-whatsapp:hover {
     background-color: #07c166;
 }
 

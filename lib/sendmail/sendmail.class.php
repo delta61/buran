@@ -39,21 +39,24 @@ class SendMail
 		//$mail->SMTPDebug = 2;    
 		$mail->isSMTP();
 		$mail->CharSet = 'UTF-8'; 
-		$mail->Host = 'smtp.yandex.ru'; 
+		$mail->Host = $smtp_host; 
 		$mail->SMTPAuth = true; 
-		$mail->Username = 'prof.podarki@yandex.ru'; // Ваш логин в Яндексе. Именно логин, без @yandex.ru
-		$mail->Password = 'put_password_here'; // Ваш пароль
+		$mail->Username = $smtp_username; 
+		$mail->Password = $smtp_password; 
 		$mail->SMTPSecure ='ssl'; 
 		$mail->Port = 465;
-		$mail->setFrom('prof.podarki@yandex.ru'); // Ваш Email
+		$mail->setFrom($smtp_username); 
+		$mail->FromName($from_name); 
 		$mail->addAddress($to); // Email получателя
 
 		
 		// Письмо
 		$mail->isHTML(true); 
-		$mail->Subject = $subject; // Заголовок письма
-		$mail->Body = $message; // Текст письма
-		// Результат
+		$mail->Subject = $subject; 
+		$mail->Body = $message;
+
+		var_dump ($mail);
+
 		if(!$mail->send()) {
 			// echo 'Mailer Error: ' . $mail->ErrorInfo;
 			return false;
