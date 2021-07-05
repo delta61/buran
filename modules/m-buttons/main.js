@@ -72,7 +72,7 @@ function showform(){
                 }).then((response) => {
                     return response.text();
                 }).then((data) => {
-                    document.getElementsByClassName('formochka-wrap')[0].innerHTML = data;
+                    document.getElementsByClassName('formochka-container')[0].innerHTML = data;
                         
                 }); 
 

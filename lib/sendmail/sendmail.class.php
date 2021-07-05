@@ -1,4 +1,9 @@
 <?php
+
+ini_set('error_reporting', E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+
 /*
  * Buran SendMail
  */
@@ -13,7 +18,6 @@ require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/phpmailer/Exception.php';
 require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/phpmailer/PHPMailer.php';
 require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/phpmailer/SMTP.php';
 
-require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/sendmail/config.php';
 
 //if ( ! define('INCLUDED')) die();
 
@@ -33,6 +37,8 @@ class SendMail
 
 	public function send ($to, $subject, $message){
 
+		require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/sendmail/config.php';
+
 		// Настройки
 		$mail = new PHPMailer(true);
 
@@ -45,8 +51,7 @@ class SendMail
 		$mail->Password = $smtp_password; 
 		$mail->SMTPSecure ='ssl'; 
 		$mail->Port = 465;
-		$mail->setFrom($smtp_username); 
-		$mail->FromName($from_name); 
+		$mail->setFrom($smtp_username, $from_name); 
 		$mail->addAddress($to); // Email получателя
 
 		
@@ -55,7 +60,7 @@ class SendMail
 		$mail->Subject = $subject; 
 		$mail->Body = $message;
 
-		var_dump ($mail);
+		// var_dump ($mail); exit;
 
 		if(!$mail->send()) {
 			// echo 'Mailer Error: ' . $mail->ErrorInfo;
