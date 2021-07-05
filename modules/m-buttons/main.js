@@ -1,4 +1,18 @@
-    // loading styles
+
+var whatsapp = '79286204643';
+var viber = '79286204643';
+var chatra = '';
+var telegram = '';
+var callback = 'yeap';
+
+var bottom = 70;
+if (whatsapp) bottom = bottom + 60;
+if (viber) bottom = bottom + 60;
+if (chatra) bottom = bottom + 60;
+if (telegram) bottom = bottom + 60;
+if (callback) bottom = bottom + 60;
+
+// loading styles
 var link = document.createElement('link');
 link.href = "/_buran/modules/m-buttons/style.css";
 link.rel = 'stylesheet';
@@ -15,6 +29,7 @@ elem.onclick = function () {
         document.getElementById('m-buttons-main').classList.remove("opened");
     } else {
         document.getElementById('m-buttons-all').style.display = "block";
+        document.getElementById('m-buttons-all').style.bottom = bottom + "px";
         document.getElementById('m-buttons-main').classList.add("opened");
     }
 };
@@ -22,9 +37,11 @@ document.body.appendChild(elem);
 
     // popup form
 var elem2 = document.createElement('div');
-elem2.innerHTML = '<a class="m-buttons-whatsapp m-buttons-btn" href="https://wa.me/79289602779" target="_blank"><i style=""></i></a>';
-elem2.innerHTML += '<div id="chatra-button" class="chatra m-buttons-btn" onclick="Chatra(\'show\');Chatra(\'openChat\', true);"></div>';
-elem2.innerHTML += '<div class="m-buttons-callback m-buttons-btn" onclick="showform()"></div>';
+if (whatsapp) elem2.innerHTML += '<a class="m-buttons-whatsapp m-buttons-btn" href="https://wa.me/' + whatsapp + '" target="_blank"><i style=""></i></a>';
+if (telegram) elem2.innerHTML += '<a class="m-buttons-telegram m-buttons-btn" href="https://t.me/' + telegram + '" target="_blank"><i style=""></i></a>';
+if (viber) elem2.innerHTML += '<a class="m-buttons-viber m-buttons-btn" href="viber://chat?number=%2B'+viber+'" target="_blank"><i style=""></i></a>';
+if (chatra) elem2.innerHTML += '<div id="chatra-button" class="chatra m-buttons-btn" onclick="Chatra(\'show\');Chatra(\'openChat\', true);"></div>';
+if (callback) elem2.innerHTML += '<div class="m-buttons-callback m-buttons-btn" onclick="showform()"></div>';
 elem2.id = "m-buttons-all";
 elem2.onclick = function () {
     // document.getElementById('m-buttons-all').style.display = "none";
