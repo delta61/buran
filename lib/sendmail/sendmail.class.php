@@ -13,6 +13,7 @@ require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/phpmailer/Exception.php';
 require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/phpmailer/PHPMailer.php';
 require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/phpmailer/SMTP.php';
 
+require $_SERVER['DOCUMENT_ROOT']. '/_buran/lib/sendmail/config.php';
 
 //if ( ! define('INCLUDED')) die();
 
@@ -41,7 +42,7 @@ class SendMail
 		$mail->Host = 'smtp.yandex.ru'; 
 		$mail->SMTPAuth = true; 
 		$mail->Username = 'prof.podarki@yandex.ru'; // Ваш логин в Яндексе. Именно логин, без @yandex.ru
-		$mail->Password = '6qj51tXTW!Jnz3'; // Ваш пароль
+		$mail->Password = 'put_password_here'; // Ваш пароль
 		$mail->SMTPSecure ='ssl'; 
 		$mail->Port = 465;
 		$mail->setFrom('prof.podarki@yandex.ru'); // Ваш Email

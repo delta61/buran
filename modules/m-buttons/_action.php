@@ -1,5 +1,5 @@
 <?php
-
+  
 
 if (isset($_REQUEST['showform'])) {
     $s = file_get_contents($_SERVER['DOCUMENT_ROOT']. '/_buran/lib/sendmail/form.html');
