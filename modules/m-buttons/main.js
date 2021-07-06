@@ -2,7 +2,7 @@
 var whatsapp = '79286204643';
 var viber = '79286204643';
 var chatra = '';
-var telegram = '';
+var telegram = 'test';
 var callback = 'yeap';
 
 var bottom = 70;
