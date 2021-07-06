@@ -35,10 +35,12 @@ elem.onclick = function () {
 };
 document.body.appendChild(elem);
 
+// 
+
     // popup form
 var elem2 = document.createElement('div');
 if (whatsapp) elem2.innerHTML += '<a class="m-buttons-whatsapp m-buttons-btn" href="https://wa.me/' + whatsapp + '" target="_blank"><i style=""></i></a>';
-if (telegram) elem2.innerHTML += '<a class="m-buttons-telegram m-buttons-btn" href="https://t.me/' + telegram + '" target="_blank"><i style=""></i></a>';
+if (telegram) elem2.innerHTML += '<a class="m-buttons-telegram m-buttons-btn" href="tg://resolve?domain=' + telegram + '" target="_blank"><i style=""></i></a>';
 if (viber) elem2.innerHTML += '<a class="m-buttons-viber m-buttons-btn" href="viber://chat?number=%2B'+viber+'" target="_blank"><i style=""></i></a>';
 if (chatra) elem2.innerHTML += '<div id="chatra-button" class="chatra m-buttons-btn" onclick="Chatra(\'show\');Chatra(\'openChat\', true);"></div>';
 if (callback) elem2.innerHTML += '<div class="m-buttons-callback m-buttons-btn" onclick="showform()"></div>';
