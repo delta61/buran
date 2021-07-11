@@ -3,14 +3,13 @@
  * Buran_
  *
  * @copyright 2021 DELTA https://delta-ltd.ru/
- * @link      https://github.com/delta61/buran.git
  * @author    <sergey.it@delta-ltd.ru>
  */
 
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.3');
+$bu = new BURAN('3.4');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -58,11 +57,7 @@ if ('fls_archive' == $bu->act) {
 }
 
 if ('etalon_update' == $bu->act) {
-	$update = $_GET['update']=='y' ? true : false;
-	$withdb = $_GET['withdb']=='y' ? true : false;
-	$tozip = isset($_GET['tozip']) && $_GET['tozip']
-		? ($_GET['tozip']=='chgs' ? 'chgs' : 'curr') : false;
-	$mres = $bu->etalon_update($update,$withdb,$tozip);
+	$mres = $bu->etalon_update();
 	$bu->res['mres'][] = $mres;
 }
 if ('etalon_compare' == $bu->act) {
@@ -106,7 +101,7 @@ class BURAN
 			'debug' => 0,
 
 			'maxtime'     => 20,
-			'maxmemory'   => 209715200, //1024*1024*200
+			'maxmemory'   => 109715200, //1024*1024*200
 			'maxitems'    => 15000,
 
 			'flag_db_dump'             => true,
@@ -138,7 +133,7 @@ class BURAN
 		),
 
 		'db' => array(
-			'maxitems' => 15000,
+			'maxitems' => 100000,
 		),
 	);
 
@@ -197,7 +192,8 @@ class BURAN
 		$this->fgc_ext = function_exists('file_get_contents')
 			? true : false;
 
-		$this->tarisavailable = class_exists('PharData') ? true : false;
+		$this->targzisavailable = function_exists('gzopen') ? true : false;
+		$this->tar = false;
 		$this->zipisavailable = false;
 		$this->zip = false;
 		if (class_exists('ZipArchive')) {
@@ -268,10 +264,10 @@ class BURAN
 		$res['dir']   = $dir;
 
 		$archfile = '/'.$this->domain.'_fls_'.$uniq;
-		$archfilepart = $archfile.'_part'.$part.'.';
-
+		$archfilepart = $archfile.'_part'.$part;
+		
 		if ($this->zip) {
-			$archfilepart .= 'zip';
+			$archfilepart .= '.zip';
 			if (file_exists($folder.$archfilepart)) {
 				$this->res['errors'][] = array('num'=>'0806');
 				return $res;
@@ -279,14 +275,15 @@ class BURAN
 			$this->zip->open($folder.$archfilepart,ZipArchive::CREATE);
 			$this->zipfile = $folder.$archfilepart;
 
-		} elseif (false && $this->tarisavailable) {
-			$archfilepart .= 'tar';
-			if (file_exists($folder.$archfilepart.'.gz')) {
+		} else {
+			$archfilepart .= '.tar';
+			if ($this->targzisavailable) $archfilepart .= '.gz';
+			if (file_exists($folder.$archfilepart)) {
 				$this->res['errors'][] = array('num'=>'0806');
 				return $res;
 			}
-			$tar = new PharData($folder.$archfilepart);
-			if ($tar) $this->tar = $tar;
+			$tarres = $this->tarOpen($folder.$archfilepart);
+			if ( ! $tarres) $this->tar = false;
 		}
 
 		if ( ! $this->zip && ! $this->tar) {
@@ -339,7 +336,7 @@ class BURAN
 						'www.'.$this->domain.$file
 					);
 				} else {
-					$this->tar->addFile(
+					$this->tarAddFile(
 						$this->droot.$file,
 						'www.'.$this->domain.$file
 					);
@@ -387,12 +384,8 @@ class BURAN
 		if ($this->zip) {
 			$this->zip->close();
 		} else {
-			// $ext = substr($archfilepart,strpos($archfilepart,'.')+1).'.gz';
-			// $tarres = $this->tar->compress(Phar::GZ,$ext);
-			// if ($tarres) {
-			// 	unlink($folder.$archfilepart);
-			// 	$res['archfilepart'] .= '.gz';
-			// }
+			$this->tarEmptyRow();
+			$this->tarClose();
 		}
 
 		$state['part'] = $part;
@@ -408,16 +401,6 @@ class BURAN
 		} else {
 			$res['completed'] = 'y';
 			$this->proccess_state($statefile,'rem');
-
-			if ($this->zip) {
-			} else {
-				$ext = substr($archfilepart,strpos($archfilepart,'.')+1).'.gz';
-				$tarres = $this->tar->compress(Phar::GZ,$ext);
-				if ($tarres) {
-					unlink($folder.$archfilepart);
-					$res['archfilepart'] .= '.gz';
-				}
-			}
 		}
 
 		$res['state'] = $state;
@@ -425,23 +408,14 @@ class BURAN
 		return $res;
 	}
 
-	function fls_etalon($update=true, $tozip='curr')
+	function fls_etalon()
 	{
 		$res = array(
 			'method' => 'fls_etalon',
 			'ok'     => 'n',
 		);
 
-		$mode = $this->conf('etalon_mode');
-		$mode = $mode=='files'
-			? 'files' : ($mode=='list' ? 'list' : 'all');
-
-		$update = $update ? true : false;
-
 		$uniq = $this->uniq;
-
-		if ($tozip) $tozip = $tozip=='chgs' ? 'chgs' : 'curr';
-		if ( ! $this->zip) $tozip = false;
 
 		$dir = $this->conf('etalon_dir').$this->conf('etalon_fls_dir');
 		$folder = $this->droot.$this->mdir.$dir;
@@ -467,6 +441,8 @@ class BURAN
 		$res['uniq']  = $uniq;
 		$res['dir']   = $dir;
 
+		$fres = $this->cms();
+
 		$this->max['cntr'][0] = array(
 			'nm'  => 'maxitems',
 			'max' => $this->conf('maxitems'),
@@ -483,78 +459,35 @@ class BURAN
 				$state['step']['f_queue'] = array();
 			}
 
-			if (in_array($mode,array('all','list'))) {
-				$lst_dir = $this->conf('etalon_dir').$this->conf('etalon_lst_dir');
-				$lst_folder = $this->droot.$this->mdir.$lst_dir;
-				if ( ! file_exists($lst_folder)) mkdir($lst_folder,0755,true);
-				$lst_file = '/etalon_list';
-				$allfile  = '__all';
-				$chgsfile = '__chgs';
-				$procfile = '_'.$uniq.'_process';
+			$lst_dir = $this->conf('etalon_dir').$this->conf('etalon_lst_dir');
+			$lst_folder = $this->droot.$this->mdir.$lst_dir;
+			if ( ! file_exists($lst_folder)) mkdir($lst_folder,0755,true);
+			$lst_file = '/etalon_list';
+			$allfile  = '__last';
+			$procfile = '_'.$uniq.'_process';
 
-				$fszhs = array(
-					'hash',
-					'fctm',
-					'size',
-					'file',
-				);
+			$fszhs = array(
+				'hash',
+				'fctm',
+				'size',
+				'file',
+			);
 
-				if ('chgs' == $tozip) {
-					$lst_file_chgs_fh = fopen($lst_folder.$lst_file.$chgsfile.$procfile,
-						($state['step']['cnt'] === 1 ? 'wb' : 'ab')
-					);
-					if ($lst_file_chgs_fh) {
-						if ($state['step']['cnt'] === 1) {
-							$fres = fputcsv($lst_file_chgs_fh,$fszhs,';');
-						}
-					} else {
-						$this->res['errors'][] = array('num'=>'0905');
-						return $res;
-					}
+			if (file_exists($lst_folder.$lst_file.'_'.$uniq)) {
+				$this->res['errors'][] = array('num'=>'0909');
+				return $res;
+			}
 
-					$lst_file_all_prev_fh = file_exists($lst_folder.$lst_file.$allfile)
-						? fopen($lst_folder.$lst_file.$allfile,'rb') : false;
-					$lst_file_all_prev = false;
-					if ($lst_file_all_prev_fh) {
-						$lst_file_all_prev = array();
-						while ($row = fgetcsv($lst_file_all_prev_fh)) {
-							$row = str_getcsv($row[0],';');
-							if (substr($row[3],0,1) != '/') continue;
-							$lst_file_all_prev[$row[3]] = $row;
-
-							if ($state['step']['cnt'] !== 1) continue;
-							if (file_exists($this->droot.$row[3])) continue;
-							$fszhs2 = array(
-								isset($row[0]) ? $row[0] : '',
-								isset($row[1]) ? $row[1] : '',
-								isset($row[2]) ? $row[2] : '',
-								'-->',
-								'',
-								'',
-								'',
-								$row[3],
-							);
-							$fres = fputcsv($lst_file_chgs_fh,$fszhs2,';');
-						}
-					}
+			$lst_file_all_fh = fopen($lst_folder.$lst_file.$procfile,
+				($state['step']['cnt'] === 1 ? 'wb' : 'ab')
+			);
+			if ($lst_file_all_fh) {
+				if ($state['step']['cnt'] === 1) {
+					$fres = fputcsv($lst_file_all_fh,$fszhs,';');
 				}
-
-				if (file_exists($lst_folder.$lst_file.'_'.$uniq)) {
-					$this->res['errors'][] = array('num'=>'0909');
-					return $res;
-				}
-
-				$lst_file_all_fh = fopen($lst_folder.$lst_file.$allfile.$procfile,
-					($state['step']['cnt'] === 1 ? 'wb' : 'ab')
-				);
-				if ($lst_file_all_fh) {
-					if ($state['step']['cnt'] === 1) {
-						$fres = fputcsv($lst_file_all_fh,$fszhs,';');
-					}
-				} else {
-					$this->res['errors'][] = array('num'=>'0905');
-					return $res;
-				}
+			} else {
+				$this->res['errors'][] = array('num'=>'0905');
+				return $res;
 			}
 		}
 
@@ -577,10 +510,6 @@ class BURAN
 					? true : false;
 
 				if ($isetalon) {
-					if ( ! in_array($mode,array('all','files'))) {
-						continue;
-					}
-
 					$origfile = substr($file,strlen($this->mdir.$dir),-2);
 
 					$ext = substr($origfile,strrpos($origfile,'.'));
@@ -592,18 +521,10 @@ class BURAN
 						! $is_etalon_ext
 						|| ! file_exists($this->droot.$origfile)
 					) {
-						if ('chgs' == $tozip) {
-							$zipres = $this->zip->addFile(
-								$this->droot.$file,
-								'www.'.$this->domain.$dir.'/a'.$origfile
-							);
-						}
-						if ($update) {
-							$state['todo'][] = array(
-								'unlink',
-								$file,
-							);
-						}
+						$state['todo'][] = array(
+							'unlink',
+							$file,
+						);
 					}
 					continue;
 				}
@@ -626,50 +547,18 @@ class BURAN
 					$is_etalon_ext = false;
 				}
 
-				if (in_array($mode,array('all','list'))) {
-					if ($lst_file_all_fh) {
-						$fszhs = array(
-							$hash,
-							$fctm,
-							$size,
-							$file,
-						);
-						$fres = fputcsv($lst_file_all_fh,$fszhs,';');
-					}
-
-					$changed = true;
-					if ('chgs' == $tozip) {
-						$changed = false;
-						$prev = $lst_file_all_prev && isset($lst_file_all_prev[$file])
-							? $lst_file_all_prev[$file] : false;
-						if ($prev) {
-							if ($prev[2] == $size) {
-								if ($prev[0] != $hash) {
-									$changed = true;
-								}
-							} else $changed = true;
-						} else $changed = true;
-						if ($changed) {
-							$fszhs = array(
-								isset($prev[0]) ? $prev[0] : '',
-								isset($prev[1]) ? $prev[1] : '',
-								isset($prev[2]) ? $prev[2] : '',
-								'-->',
-								$hash,
-								$fctm,
-								$size,
-								$file,
-							);
-							$fres = fputcsv($lst_file_chgs_fh,$fszhs,';');
-						}
-					}
+				if ($lst_file_all_fh) {
+					$fszhs = array(
+						$hash,
+						$fctm,
+						$size,
+						$file,
+					);
+					$fres = fputcsv($lst_file_all_fh,$fszhs,';');
 				}
 
 				$changed = false;
-				if (
-					$is_etalon_ext
-					&& in_array($mode,array('all','files'))
-				) {
+				if ($is_etalon_ext) {
 					$etalonfile_ex = file_exists($etalonfile);
 					if ($etalonfile_ex) {
 						$size_0 = filesize($etalonfile);
@@ -682,32 +571,26 @@ class BURAN
 					} else $changed = true;
 
 					if ($changed) {
-						if ($update) {
-							if ( ! file_exists($etalonfolder)) {
-								mkdir($etalonfolder,0755,true);
-							}
-
-							$state['todo'][] = array(
-								'update',
-								$file,
-							);
+						if ( ! file_exists($etalonfolder)) {
+							mkdir($etalonfolder,0755,true);
 						}
-					}
 
-					if ($changed && 'chgs' == $tozip) {
-						$this->zip->addFile(
-							$etalonfile,
-							'www.'.$this->domain.$dir.'/a'.$file
+						$state['todo'][] = array(
+							'update',
+							$file,
 						);
 					}
 
-					if ($tozip) {
-						if ($changed || 'curr' == $tozip) {
-							$this->zip->addFile(
-								$this->droot.$file,
-								'www.'.$this->domain.$dir.'/b'.$file
-							);
-						}
+					if ($this->zip) {
+						$this->zip->addFile(
+							$this->droot.$file,
+							'www.'.$this->domain.$dir.$file
+						);
+					} else {
+						$this->tarAddFile(
+							$this->droot.$file,
+							'www.'.$this->domain.$dir.$file
+						);
 					}
 				}
 				
@@ -744,6 +627,11 @@ class BURAN
 				) {
 					continue;
 				}
+				if ($this->cache_dirs && is_array($this->cache_dirs)) {
+					foreach ($this->cache_dirs AS $cdir) {
+						if (strpos($nextdir.$file.'/',$cdir) === 0) continue 2;
+					}
+				}
 				if (is_dir($this->droot.$nextdir.$file)) {
 					$state['step']['d_queue'][] = $nextdir.$file.'/';
 					continue;
@@ -763,44 +651,25 @@ class BURAN
 					'cnt' => 0,
 				);
 
-				if (in_array($mode,array('all','list'))) {
-					if ($update) {
-						copy(
-							$lst_folder.$lst_file.$allfile.$procfile,
-							$lst_folder.$lst_file.'_'.$uniq
-						);
-						rename(
-							$lst_folder.$lst_file.$allfile.$procfile,
-							$lst_folder.$lst_file.$allfile
-						);
-					} else {
-						rename(
-							$lst_folder.$lst_file.$allfile.$procfile,
-							$lst_folder.$lst_file.'_'.$uniq
-						);
-					}
+				copy(
+					$lst_folder.$lst_file.$procfile,
+					$lst_folder.$lst_file.'_'.$uniq
+				);
+				rename(
+					$lst_folder.$lst_file.$procfile,
+					$lst_folder.$lst_file.$allfile
+				);
 
-					if ('chgs' == $tozip) {
-						copy(
-							$lst_folder.$lst_file.$chgsfile.$procfile,
-							$lst_folder.$lst_file.$chgsfile.'_'.$uniq
-						);
-						rename(
-							$lst_folder.$lst_file.$chgsfile.$procfile,
-							$lst_folder.$lst_file.$chgsfile
-						);
-
-						$this->zip->addFile(
-							$lst_folder.$lst_file.$chgsfile,
-							'www.'.$this->domain.$lst_dir.$lst_file.$chgsfile
-						);
-
-					} elseif ($tozip) {
-						$this->zip->addFile(
-							$lst_folder.$lst_file.$allfile,
-							'www.'.$this->domain.$lst_dir.'/b'.$lst_file.$allfile
-						);
-					}
+				if ($this->zip) {
+					$this->zip->addFile(
+						$lst_folder.$lst_file.$allfile,
+						'www.'.$this->domain.$lst_dir.$lst_file.$allfile
+					);
+				} else {
+					$this->tarAddFile(
+						$lst_folder.$lst_file.$allfile,
+						'www.'.$this->domain.$lst_dir.$lst_file.$allfile
+					);
 				}
 			}
 
@@ -808,8 +677,11 @@ class BURAN
 			if ($lst_file_chgs_fh) fclose($lst_file_chgs_fh);
 			if ($lst_file_all_fh) fclose($lst_file_all_fh);
 
-			if ($tozip) {
+			if ($this->zip) {
 				$this->zip->close();
+			} else {
+				$this->tarEmptyRow();
+				$this->tarClose();
 			}
 		}
 
@@ -872,6 +744,248 @@ class BURAN
 
 		unset($state['step']['d_queue']);
 		unset($state['todo']);
+
+		$res['state'] = $state;
+		$res['ok'] = 'y';
+		return $res;
+	}
+
+	function db_etalon()
+	{
+		$res = array(
+			'method' => 'db_etalon',
+			'ok'     => 'n',
+		);
+
+		$procfile = '_process';
+
+		$uniq = $this->uniq;
+
+		$dir = $this->conf('etalon_dir').$this->conf('etalon_db_dir');
+		$folder = $this->droot.$this->mdir.$dir;
+		if ( ! file_exists($folder)) mkdir($folder,0755,true);
+
+		$statefile = $this->conf('etalon_dir').'/state_db_'.$uniq;
+		$state = $this->proccess_state($statefile,false,true);
+		if ($state === false) {
+			$this->res['errors'][] = array('num'=>'0101');
+			return $res;
+		} elseif ( ! $state || ! is_array($state)) {
+			$state_new = true;
+			$state = array(
+				'cnt'    => 0,
+				'tbl'    => false,
+				'offset' => 0,
+				'keys'   => '',
+			);
+		}
+
+		$res['state']    = $state;
+		$res['uniq']     = $uniq;
+		$res['dir']      = $dir;
+
+		$fres = $this->cms();
+		if ( ! $fres) {
+			$this->res['errors'][] = array('num'=>'0102');
+			return $res;
+		}
+		$fres = $this->db_access();
+		if ( ! $fres) {
+			$this->res['errors'][] = array('num'=>'0103');
+			return $res;
+		}
+		$dbcres = $this->db_connect();
+		if ($dbcres['ok'] != 'y') return $res;
+
+		$limit = intval($this->conf('maxitems','db'));
+		if ( ! $limit) $limit = 9999;
+		$this->max['cntr'][0] = array(
+			'nm'  => 'maxitems',
+			'max' => $limit,
+			'cnt' => 0,
+		);
+
+		$state['cnt']++;
+
+		$db_file = '/etalon_db';
+		$allfile  = '__last';
+		$procfile = '_'.$uniq.'_process';
+
+		$fszhs = array(
+			'rtp',
+			'hsh',
+			'tbl',
+			'kys',
+		);
+
+		if (file_exists($folder.$db_file.'_'.$uniq)) {
+			$this->res['errors'][] = array('num'=>'0105');
+			return $res;
+		}
+
+		$db_file_all_fh = fopen($folder.$db_file.$procfile,
+			($state['cnt'] === 1 ? 'wb' : 'ab')
+		);
+		if ($db_file_all_fh) {
+			if ($state['cnt'] === 1) {
+				$fres = fputcsv($db_file_all_fh,$fszhs,';');
+			}
+		} else {
+			$this->res['errors'][] = array('num'=>'0106');
+			return $res;
+		}
+
+		$dbres = $this->db->query("SHOW TABLES");
+		if ( ! $dbres) {
+			$this->res['errors'][] = array('num'=>'0104');
+			return $res;
+		}
+
+		while ($row = $dbres->fetch_row()) {
+
+			if (
+				$state['tbl']
+				&& $row[0] != $state['tbl']
+			) continue;
+			$ii_tbl = $row[0];
+			$state['tbl'] = false;
+
+			if ( ! $state['offset']) {
+
+				$dbres2 = $this->db->query("SELECT *
+					FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+					WHERE TABLE_NAME=N'{$row[0]}'
+					ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
+				if ( ! $dbres2) {
+					$this->res['errors'][] = array('num'=>'0112');
+					continue;
+				}
+				$keys = "";
+				$keys_nm = false;
+				$keys_ar = array();
+				while ($row2 = $dbres2->fetch_assoc()) {
+					if (
+						$keys_nm
+						&& $keys_nm !== $row2['CONSTRAINT_NAME']
+					) break;
+					$keys_nm = $row2['CONSTRAINT_NAME'];
+					$keys .= ($keys?",":"")."`".$row2['COLUMN_NAME']."`";
+					$keys_ar[$row2['COLUMN_NAME']] = $row2['COLUMN_NAME'];
+				}
+				$state['keys'] = $keys;
+				$state['keys_ar'] = $keys_ar;
+
+				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$row[0]}`");
+				if ( ! $dbres2) {
+					$this->res['errors'][] = array('num'=>'0105');
+					continue;
+				}
+
+				$row2 = $dbres2->fetch_row();
+				$tblhash = md5($row2[1]);
+
+				if ($db_file_all_fh) {
+					$fszhs = array(
+						'tbl',
+						$tblhash,
+						$row[0],
+						$keys,
+					);
+					$fres = fputcsv($db_file_all_fh,$fszhs,';');
+				}
+			}
+
+			$q = "SELECT * FROM `{$row[0]}`";
+			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
+			$q .= " LIMIT ".($limit+100)." OFFSET ".$state['offset'];
+
+			$dbres2 = $this->db->query($q);
+			if ( ! $dbres2) {
+				$this->res['errors'][] = array('num'=>'0106');
+				continue;
+			}
+
+			$ii = 0;
+			while ($row2 = $dbres2->fetch_assoc()) {
+				$ii++;
+				$this->max['cntr'][0]['cnt']++;
+
+				$dbrow = "";
+				$dbrow_key = "";
+				foreach ($row2 AS $key => $val) {
+					$val = $this->db->real_escape_string($val);
+					$dbrow .= ($dbrow?",":"")."`{$key}`='{$val}'";
+
+					if ($state['keys_ar'][$key]) {
+						$dbrow_key .= ($dbrow_key?",":"")."`{$key}`='{$val}'";
+					}
+				}
+				$dbrow_hash = md5($dbrow);
+
+				if ($db_file_all_fh) {
+					$fszhs = array(
+						'row',
+						$dbrow_hash,
+						$row[0],
+						$dbrow_key,
+					);
+					$fres = fputcsv($db_file_all_fh,$fszhs,';');
+				}
+
+				if ($this->max()) {
+					$flag_max = true;
+					break;
+				}
+			}
+
+			if ( ! $this->max['flag']) {
+				$state['offset'] = 0;
+				$state['keys'] = '';
+			}
+
+			if ($this->max()) {
+				$flag_max = true;
+			}
+			if ($flag_max) break;
+		}
+
+		$state['tbl'] = $ii_tbl;
+		$state['offset'] += $ii;
+
+		if ($this->max['flag']) {
+			$res['max'] = true;
+
+			$foores = $this->proccess_state($statefile,$state,true);
+			if ( ! $foores) {
+				$this->res['errors'][] = array('num'=>'0109');
+				return $res;
+			}
+
+		} else {
+			copy(
+				$folder.$db_file.$procfile,
+				$folder.$db_file.'_'.$uniq
+			);
+			rename(
+				$folder.$db_file.$procfile,
+				$folder.$db_file.$allfile
+			);
+
+			if ($this->zip) {
+				$this->zip->addFile(
+					$folder.$db_file.$allfile,
+					'www.'.$this->domain.$dir.$db_file.$allfile
+				);
+			} else {
+				$this->tarAddFile(
+					$folder.$db_file.$allfile,
+					'www.'.$this->domain.$dir.$db_file.$allfile
+				);
+			}
+
+			$res['completed'] = 'y';
+			$this->proccess_state($statefile,'rem');
+		}
 
 		$res['state'] = $state;
 		$res['ok'] = 'y';
@@ -1087,14 +1201,12 @@ class BURAN
 		return $res;
 	}
 
-	function etalon_update($update=true, $withdb=true, $tozip='curr')
+	function etalon_update()
 	{
 		$res = array(
 			'method' => 'etalon_update',
 			'ok'     => 'n',
 		);
-
-		if ($tozip) $tozip = $tozip=='chgs' ? 'chgs' : 'curr';
 
 		$dir = $this->conf('etalon_dir');
 		$folder = $this->droot.$this->mdir.$dir;
@@ -1102,7 +1214,7 @@ class BURAN
 
 		$uniq = $this->uniq;
 
-		$statefile = $dir.'/state_chgs_'.$uniq;
+		$statefile = $dir.'/state_etalon_'.$uniq;
 		$state = $this->proccess_state($statefile,false,true);
 		if ($state === false) {
 			$this->res['errors'][] = array('num'=>'1001');
@@ -1121,85 +1233,65 @@ class BURAN
 		$res['uniq']  = $uniq;
 		$res['dir']   = $dir;
 		
-		if ($tozip) {
-			$procfile = '_process';
-			$archfile = '/'.$this->domain.'_etalon_'.$tozip.'_'.$uniq.'.zip';
+		$procfile = '_process';
+		$archfile = '/'.$this->domain.'_etalon_'.$uniq;
 
+		if ($this->zip) {
+			$archfile .= '.zip';
 			if (file_exists($folder.$archfile)) {
 				$this->res['errors'][] = array('num'=>'1008');
 				return $res;
 			}
+			$ziptp = $state['step']['num'] === 1
+				? ZipArchive::CREATE | ZipArchive::OVERWRITE
+				: ZipArchive::CREATE;
+			$this->zip->open($folder.$archfile.$procfile,$ziptp);
+			$this->zipfile = $folder.$archfile.$procfile;
 
-			if ($this->zip) {
-				$res['archfile'] = $archfile;
-				$ziptp = $state['step']['num'] === 1
-					? ZipArchive::CREATE | ZipArchive::OVERWRITE
-					: ZipArchive::CREATE;
-				$this->zip->open($folder.$archfile.$procfile,$ziptp);
-				$this->zipfile = $folder.$archfile.$procfile;
-			} else {
-				$this->zip = false;
-				$this->res['errors'][] = array('num'=>'1002');
-				$tozip = false;
+		} else {
+			$archfile .= '.tar';
+			if ($this->targzisavailable) $archfile .= '.gz';
+			if (file_exists($folder.$archfile)) {
+				$this->res['errors'][] = array('num'=>'1009');
+				return $res;
 			}
+			$tartp = $state['step']['num'] === 1 ? 'w' : 'a';
+			$tarres = $this->tarOpen($folder.$archfile.$procfile,$tartp);
+			if ( ! $tarres) $this->tar = false;
 		}
 
-		if ($withdb && $state['step']['num'] === 1) {
+		if ( ! $this->zip && ! $this->tar) {
+			$this->res['errors'][] = array('num'=>'1010');
+			return $res;
+		}
+
+		$res['archfile'] = $archfile;
+
+		if ($state['step']['num'] === 1) {
 			$step_flag = true;
 			$state['step']['cnt']++;
 
 			$dir_dir = $dir.$this->conf('etalon_db_dir');
 			$dir_folder = $this->droot.$this->mdir.$dir_dir;
 			$dumpfile = $this->conf('etalon_db_file');
-			if (
-				'chgs' == $tozip
-				&& $state['step']['cnt'] == 1
-				&& file_exists($dir_folder.$dumpfile)
-			) {
-				$this->zip->addFile(
-					$dir_folder.$dumpfile,
-					'www.'.$this->domain.$dir_dir.'/a'.$dumpfile
-				);
-				$this->zip->close();
-				$this->zip->open($this->zipfile);
-			}
 
-			$dumpres = $this->db_dump('etalon');
+			$fetres = $this->db_etalon('etalon');
 
-			$dumpdata = $dumpres['dump'];
-			unset($dumpres['dump']);
-			$res['stepres'] = $dumpres;
+			$res['stepres'] = $fetres;
 
-			if ($this->max['flag']) {
-			} else {
-				if ($tozip) {
-					$this->zip->addFile(
-						$dir_folder.$dumpfile,
-						'www.'.$this->domain.$dir_dir.'/b'.$dumpfile
-					);
-					$this->zip->close();
-				}
+			if ($fetres['completed'] == 'y') {
 				$step_next = true;
 			}
-
-			if ($dumpres['ok'] != 'y') {
+			if ($fetres['ok'] != 'y') {
 				$step_next = true;
 			}
-
-		} elseif ($state['step']['num'] === 1) {
-			$state = array(
-				'step' => array(
-					'num' => $state['step']['num']+1,
-					'cnt' => 0,
-				),
-			);
 		}
 
 		if ($state['step']['num'] === 2) {
 			$step_flag = true;
 			$state['step']['cnt']++;
 
-			$fetres = $this->fls_etalon($update,$tozip);
+			$fetres = $this->fls_etalon();
 
 			$res['stepres'] = $fetres;
 
@@ -1850,6 +1942,9 @@ $p .= '</td>
 			$this->cms_ver  = $modx_version;
 			$this->cms_date = $modx_release_date;
 			$this->cms_name = $modx_full_appname;
+			$this->cache_dirs = array(
+				'/assets/cache/',
+			);
 			return true;
 		}
 
@@ -1861,6 +1956,10 @@ $p .= '</td>
 			$this->cms_ver  = $v['full_version'];
 			$this->cms_date = '';
 			$this->cms_name = $v['full_appname'];
+			$this->cache_dirs = array(
+				'/assets/cache/',
+				'/core/cache/',
+			);
 			return true;
 		}
 
@@ -1888,6 +1987,9 @@ $p .= '</td>
 			$this->cms_ver  = '';
 			$this->cms_date = '';
 			$this->cms_name = '';
+			$this->cache_dirs = array(
+				'/system/storage/cache/',
+			);
 			return true;
 		}
 
@@ -1939,6 +2041,11 @@ $p .= '</td>
 			$this->cms_ver  = SM_VERSION;
 			$this->cms_date = SM_VERSION_DATE;
 			$this->cms_name = '';
+			$this->cache_dirs = array(
+				'/bitrix/cache/',
+				'/bitrix/managed_cache/',
+				'/bitrix/stack_cache/',
+			);
 			return true;
 		}
 		return false;
@@ -2450,7 +2557,97 @@ $p .= '</td>
 
 		return true;
 	}
+
+	function tarAddFile($file, $tofile)
+	{
+		if ( ! $this->tar) return false;
+		if (is_dir($file)) {
+			$v_typeflag = '5';
+			$v_size = 0;
+		} else {
+			$v_typeflag = '';
+			$v_size = filesize($file);
+		}
+		$v_size = sprintf('%11s ', DecOct($v_size));
+
+		$v_mtime_data = filemtime($file);
+		$v_mtime = sprintf('%11s', DecOct($v_mtime_data));
+
+		$v_binary_data_first = pack('a100a8a8a8a12A12', $tofile, '', '', '', $v_size, $v_mtime);
+		$v_binary_data_last = pack('a1a100a6a2a32a32a8a8a155a12', $v_typeflag, '', '', '', '', '', '', '', '', '');
+
+		$v_checksum = 0;
+		for ($i=0; $i<148; $i++) $v_checksum += ord(substr($v_binary_data_first,$i,1));
+		for ($i=148; $i<156; $i++) $v_checksum += ord(' ');
+		for ($i=156, $j=0; $i<512; $i++, $j++) $v_checksum += ord(substr($v_binary_data_last,$j,1));
+		$v_checksum = sprintf('%6s ', DecOct($v_checksum));
+		$v_binary_data = pack('a8', $v_checksum);
+
+		if ($this->targzisavailable) {
+			$wrtres = gzwrite($this->tar,$v_binary_data_first,148);
+		} else {
+			$wrtres = fwrite($this->tar,$v_binary_data_first,148);
+		}
+		if ( ! $wrtres) return false;
+		if ($this->targzisavailable) {
+			$wrtres = gzwrite($this->tar,$v_binary_data,8);
+		} else {
+			$wrtres = fwrite($this->tar,$v_binary_data,8);
+		}
+		if ( ! $wrtres) return false;
+		if ($this->targzisavailable) {
+			$wrtres = gzwrite($this->tar,$v_binary_data_last,356);
+		} else {
+			$wrtres = fwrite($this->tar,$v_binary_data_last,356);
+		}
+		if ( ! $wrtres) return false;
+		
+		$v_file = fopen($file,'rb');
+		if ( ! $v_file) return false;
+		while ( ! feof($v_file)) {
+			$v_buffer = fread($v_file,512);
+			if ( ! $v_buffer) break;
+			$v_binary_data = pack('a512',$v_buffer);
+			if ($this->targzisavailable) {
+				$wrtres = gzwrite($this->tar,$v_binary_data);
+			} else {
+				$wrtres = fwrite($this->tar,$v_binary_data);
+			}
+		}
+		fclose($v_file);
+		if ( ! $wrtres) return false;
+		return true;
+	}
+	function tarEmptyRow()
+	{
+		if ( ! $this->tar) return false;
+		$v_binary_data = pack('a512','');
+		return gzwrite($this->tar,$v_binary_data);
+	}
+	function tarOpen($tarfile, $mode='w')
+	{
+		if ($this->targzisavailable) {
+			$p_tar = gzopen($tarfile,$mode.'b9');
+		} else {
+			$p_tar = fopen($tarfile,$mode.'b');
+		}
+		if ( ! $p_tar) return false;
+		$this->tar = $p_tar;
+		return true;
+	}
+	function tarClose($tarfile)
+	{
+		if ( ! $this->tar) return false;
+		if ($this->targzisavailable) {
+			$clsres = gzclose($tarfile);
+		} else {
+			$clsres = fclose($tarfile);
+		}
+		return $clsres;
+	}
 }
+// ----------------------------------------------
+// ----------------------------------------------
 // ----------------------------------------------
 // ----------------------------------------------
 // ----------------------------------------------
