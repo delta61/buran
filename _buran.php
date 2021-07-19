@@ -61,16 +61,11 @@ if ('etalon_update' == $bu->act) {
 	$bu->res['mres'][] = $mres;
 }
 if ('etalon_compare' == $bu->act) {
-	$file1 = $_GET['file1'];
+	$file1 = $_GET['file'];
 	$file2 = $_GET['file2'];
-	$result = $_GET['result']=='y' ? true : false;
-	$mres = $bu->etalon_compare($file1,$file2,$result);
-	if ($file && $result) {
-		$bu->res_ctp = 'html';
-		$bu->res['data'] = $mres;
-	} else {
-		$bu->res['mres'][] = $mres;
-	}
+	$getlist = $_GET['getlist']=='y' ? true : false;
+	$mres = $bu->etalon_compare($file1,$file2,$getlist);
+	$bu->res['mres'][] = $mres;
 }
 
 if ('fls_remove' == $bu->act) {
@@ -1208,7 +1203,7 @@ class BURAN
 		return $res;
 	}
 
-	function etalon_compare($etfile1=false, $etfile2=false, $result=false) {
+	function etalon_compare($etfile1=false, $etfile2=false, $getlist=false) {
 		$res = array(
 			'method' => 'etalon_compare',
 			'ok'     => 'n',
@@ -1238,6 +1233,23 @@ class BURAN
 		$lastfile = '__last';
 		$procfile = '_'.$uniq.'_process';
 
+		if ($getlist) {
+			$files = array();
+			$lists = glob($lst_folder.$lst_file.'_*');
+			if ($lists) {
+				foreach ($lists AS $list) {
+					$fl = basename($list);
+					$foo = preg_match("/([0-9]{2,4}-){5}[0-9]{2}$/", $fl, $mtchs);
+					if ( ! $foo) continue;
+					$files[] = $mtchs[0];
+				}
+			}
+			$res['files'] = $files;
+			$res['completed'] = 'y';
+			$res['ok'] = 'y';
+			return $res;
+		}
+
 		if (file_exists($cmpr_folder.$cmpr_file.'_'.$uniq)) {
 			$this->res['errors'][] = array('num'=>'0909');
 			return $res;
@@ -1249,15 +1261,15 @@ class BURAN
 		$etfile2_lst = false;
 		if ($etfile1) {
 			$etfile1_db = $db_folder.$db_file.'_'.$etfile1;
-			if ( ! file_exists($etfile1_db)) $etfile1_db = false;
+			// if ( ! file_exists($etfile1_db)) $etfile1_db = false;
 			$etfile1_lst = $lst_folder.$lst_file.'_'.$etfile1;
-			if ( ! file_exists($etfile1_lst)) $etfile1_lst = false;
+			// if ( ! file_exists($etfile1_lst)) $etfile1_lst = false;
 		}
 		if ($etfile2) {
 			$etfile2_db = $db_folder.$db_file.'_'.$etfile2;
-			if ( ! file_exists($etfile2_db)) $etfile2_db = false;
+			// if ( ! file_exists($etfile2_db)) $etfile2_db = false;
 			$etfile2_lst = $lst_folder.$lst_file.'_'.$etfile2;
-			if ( ! file_exists($etfile2_lst)) $etfile2_lst = false;
+			// if ( ! file_exists($etfile2_lst)) $etfile2_lst = false;
 		}
 		if ( ! $etfile1_db && $etfile2_db) {
 			$etfile1_db = $etfile2_db;
@@ -1266,20 +1278,6 @@ class BURAN
 		if ( ! $etfile1_lst && $etfile2_lst) {
 			$etfile1_lst = $etfile2_lst;
 			$etfile2_lst = false;
-		}
-
-		if ( ! $etfile1) {
-			$files = array();
-			$lists = glob($lst_folder.$lst_file.'_*');
-			if ($lists) {
-				foreach ($lists AS $list) {
-					$files[] = basename($list);
-				}
-			}
-			$res['files'] = $files;
-			$res['completed'] = 'y';
-			$res['ok'] = 'y';
-			return $res;
 		}
 
 		$statefile = $dir.'/state_etcmpr_'.$uniq;
