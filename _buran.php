@@ -1331,187 +1331,25 @@ class BURAN
 			) $step_next = true;
 		}
 
-		$lst_file_all_prev_fh = fopen($lst_folder.$etfile1,'rb');
-		$lst_file_all_prev = false;
-		if ($lst_file_all_prev_fh) {
-			$lst_file_all_prev = array();
-			while ($row = fgetcsv($lst_file_all_prev_fh)) {
-				$row = str_getcsv($row[0],';');
-				if (substr($row[3],0,1) != '/') continue;
-				$lst_file_all_prev[$row[3]] = $row;
-
-				if ($state['step_cnt'] !== 1) continue;
-				if (file_exists($this->droot.$row[3])) continue;
-				$ext = substr($row[3],strrpos($row[3],'.')+1);
-				$ext = strtolower($ext);
-				$state['list'][] = array(
-					'del',
-					$row[3],
-					array($row[1]),
-					array($row[2]),
-					$ext,
+		if ($step_flag) {
+			if ($step_next) {
+				$res['nextstep'] = true;
+				$state = array(
+					'step' => array(
+						'num' => $state['step']['num']+1,
+						'cnt' => 0,
+					),
 				);
 			}
-		} else {
-			$this->res['errors'][] = array('num'=>'1405');
-			return $res;
-		}
-
-		$this->max['cntr'][0] = array(
-			'nm'  => 'maxitems',
-			'max' => $this->conf('maxitems'),
-			'cnt' => 0,
-		);
-
-		$ii = 0;
-		while (true) {
-			while (true) {
-				$file = array_shift($state['f_queue']);
-				if ( ! $file) break;
-
-				$isetalon = strpos($file,$this->mdir.$dir.'/') === 0
-					? true : false;
-				if ($isetalon) continue;
-
-				$ii++;
-				$this->max['cntr'][0]['cnt']++;
-				$state['step']['files']++;
-
-				$size_0 = false;
-				$hash_0 = false;
-				$size = filesize($this->droot.$file);
-				
-				$prev = $lst_file_all_prev && isset($lst_file_all_prev[$file])
-					? $lst_file_all_prev[$file] : false;
-				$changed = $created = false;
-				if ($prev) {
-					if ($prev[2] == $size) {
-						$hash = md5_file($this->droot.$file);
-						if ($prev[0] != $hash) {
-							$changed = true;
-						}
-					} else $changed = true;
-				} else $created = true;
-				if ($changed || $created) {
-					$fctm = $this->filetime($this->droot.$file);
-					$ext = substr($file,strrpos($file,'.')+1);
-					$ext = strtolower($ext);
-					$state['list'][] = array(
-						$created ? 'crt' : 'chg',
-						$file,
-						array($prev[1],$fctm),
-						array($prev[2],$size),
-						$ext,
-					);
-				}
-
-				if ($this->max()) {
-					$flag_max = true;
-					break;
-				}
-				if ($ii % 2000 == 0) sleep(2);
-			}
-			if ($flag_max) break;
-
-			$state['f_queue'] = array();
-			$nextdir = array_shift($state['d_queue']);
-			if ( ! $nextdir) break;
-			if ( ! ($open = opendir($this->droot.$nextdir))) {
-				$this->res['errors'][] = array('num'=>'1402');
-				continue;
-			}
-			while ($file = readdir($open)) {
-				if (
-					filetype($this->droot.$nextdir.$file) == 'link'
-					|| $file == '.' || $file == '..'
-					|| $file == '.th'
-					|| (
-						strpos(
-							$nextdir.$file,
-							$this->mdir.$this->conf('etalon_dir').'/'
-						) === 0
-						&& strpos(
-							$nextdir.$file.'/',
-							$this->mdir.$dir.'/'
-						) !== 0
-					)
-					/*|| strpos(
-						$nextdir.$file,
-						'/bitrix/backup/'
-					) === 0
-					|| strpos(
-						$nextdir.$file,
-						'/bitrix/managed_cache/'
-					) === 0
-					|| strpos(
-						$nextdir.$file,
-						'/bitrix/cache/'
-					) === 0
-					|| strpos(
-						$nextdir.$file,
-						'/bitrix/html_pages/'
-					) === 0
-					|| strpos(
-						$nextdir.$file,
-						'/upload/resize_cache/'
-					) === 0
-					|| strpos(
-						$nextdir.$file,
-						'/upload/tmp/'
-					) === 0
-					|| strpos(
-						$nextdir.$file,
-						'/upload/iblock/'
-					) === 0*/
-				) {
-					continue;
-				}
-				if (is_dir($this->droot.$nextdir.$file)) {
-					$state['d_queue'][] = $nextdir.$file.'/';
-					continue;
-				}
-				if ( ! is_file($this->droot.$nextdir.$file)) {
-					continue;
-				}
-				$state['f_queue'][] = $nextdir.$file;
-			}
-		};
-
-		if ($this->max['flag']) {
-			$res['max'] = true;
 			$foores = $this->proccess_state($statefile,$state,true);
 			if ( ! $foores) {
-				$this->res['errors'][] = array('num'=>'1403');
+				$this->res['errors'][] = array('num'=>'1003');
 				return $res;
 			}
-
 		} else {
 			$res['completed'] = 'y';
-
-			if ($result) {
-				$this->proccess_state($statefile,'rem');
-
-				$data = array();
-				foreach ($state['list'] AS $row) {
-$p = '<tr class="stat_'.$row[0].'">
-	<td>';
-if ($row[2][0]) $p .= date('d.m.Y, H:i:s',$row[2][0]).'<br>';
-if ($row[2][1]) $p .= date('d.m.Y, H:i:s',$row[2][1]);
-$p .= '</td>
-	<td>'.$row[3][0].' -> '.$row[3][1].'</td>
-	<td>'.$row[4].'</td>
-	<td>'.$row[1].'</td>
-</tr>';
-					$data[$row[0]] .= $p;
-				}
-				$resp = '<table class="table_compare">'.$data['crt'].$data['del'].$data['chg'].'</table>';
-				return $resp;
-			}
+			$this->proccess_state($statefile,'rem');
 		}
-
-		unset($state['f_queue']);
-		unset($state['d_queue']);
-		unset($state['list']);
 
 		$res['state'] = $state;
 		$res['ok'] = 'y';
