@@ -2,13 +2,21 @@
 var whatsapp = '79286204643';
 var viber = '79286204643';
 var chatra = '';
+var jivo = 'yeap';
 var telegram = 'test';
 var callback = 'yeap';
+
+        // код виджета jivo site (удалить если не нужен)
+(function(){ var widget_id = 'DQy65yhUku';var d=document;var w=window;function l(){
+var s = document.createElement('script'); s.type = 'text/javascript'; s.async = true; s.src = '//code.jivosite.com/script/widget/'+widget_id; var ss = document.getElementsByTagName('script')[0]; ss.parentNode.insertBefore(s, ss);}if(d.readyState=='complete'){l();}else{if(w.attachEvent){w.attachEvent('onload',l);}else{w.addEventListener('load',l,false);}}})();
+        // end of код виджета jivo site
+
 
 var bottom = 70;
 if (whatsapp) bottom = bottom + 60;
 if (viber) bottom = bottom + 60;
 if (chatra) bottom = bottom + 60;
+if (jivo) bottom = bottom + 60;
 if (telegram) bottom = bottom + 60;
 if (callback) bottom = bottom + 60;
 
@@ -43,6 +51,7 @@ if (whatsapp) elem2.innerHTML += '<a class="m-buttons-whatsapp m-buttons-btn" hr
 if (telegram) elem2.innerHTML += '<a class="m-buttons-telegram m-buttons-btn" href="tg://resolve?domain=' + telegram + '" target="_blank"><i style=""></i></a>';
 if (viber) elem2.innerHTML += '<a class="m-buttons-viber m-buttons-btn" href="viber://chat?number=%2B'+viber+'" target="_blank"><i style=""></i></a>';
 if (chatra) elem2.innerHTML += '<div id="chatra-button" class="chatra m-buttons-btn" onclick="Chatra(\'show\');Chatra(\'openChat\', true);"></div>';
+if (jivo) elem2.innerHTML += '<div id="chatra-button" class="chatra m-buttons-btn" onclick="openJivo();"></div>';
 if (callback) elem2.innerHTML += '<div class="m-buttons-callback m-buttons-btn" onclick="showform()"></div>';
 elem2.id = "m-buttons-all";
 elem2.onclick = function () {
@@ -51,7 +60,13 @@ elem2.onclick = function () {
 
 document.body.appendChild(elem2);
 
+function openJivo(){
+    jivo_api.open();
 
+    var j = document.getElementsByClassName("globalClass_ebef");
+    j[0].style.display = "block";
+
+}
 
 function showform(){
     var formwrap = document.getElementsByClassName('formochka-modal');
