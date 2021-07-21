@@ -305,8 +305,7 @@
     }
 }
 
-
     /*jivo*/
-.globalClass_ebef {
+[class^=globalClass_] {
     display: none;
 }
