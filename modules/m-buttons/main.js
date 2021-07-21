@@ -60,11 +60,11 @@ elem2.onclick = function () {
 
 document.body.appendChild(elem2);
 
-function openJivo(){
+function openJivo() {
     jivo_api.open();
 
-    var j = document.getElementsByClassName("globalClass_ebef");
-    j[0].style.display = "block";
+    var j = document.getElementsByTagName("jdiv");
+    j[1].style.display = "block";
 
 }
 
