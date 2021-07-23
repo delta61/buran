@@ -663,7 +663,7 @@ class BURAN
 		);
 		if ($lst_file_all_fh) {
 			if ($state['step']['frst']) {
-				$fres = fputcsv($lst_file_all_fh,$fszhs,';');
+				$fres = fputcsv($lst_file_all_fh,$fszhs);
 			}
 		} else {
 			$this->res['errors'][] = array('num'=>'0905');
@@ -724,7 +724,7 @@ class BURAN
 						$size,
 						$file,
 					);
-					$fres = fputcsv($lst_file_all_fh,$fszhs,';');
+					$fres = fputcsv($lst_file_all_fh,$fszhs);
 				}
 
 				if ($is_etalon_ext) {
@@ -890,6 +890,7 @@ class BURAN
 			'hsh',
 			'tbl',
 			'kys',
+			'cls',
 		);
 
 		if (file_exists($folder.$db_file.'_'.$uniq)) {
@@ -902,7 +903,7 @@ class BURAN
 		);
 		if ($db_file_all_fh) {
 			if ($state['cnt'] === 1) {
-				$fres = fputcsv($db_file_all_fh,$fszhs,';');
+				$fres = fputcsv($db_file_all_fh,$fszhs);
 			}
 		} else {
 			$this->res['errors'][] = array('num'=>'0106');
@@ -954,9 +955,19 @@ class BURAN
 					$this->res['errors'][] = array('num'=>'0105');
 					continue;
 				}
-
 				$row2 = $dbres2->fetch_row();
 				$tblhash = md5($row2[1]);
+
+				$dbres2 = $this->db->query("SELECT * FROM `{$row[0]}` LIMIT 1");
+				if ( ! $dbres2) {
+					$this->res['errors'][] = array('num'=>'0105');
+					continue;
+				}
+				$row2 = $dbres2->fetch_assoc();
+				$cols = "";
+				foreach ($row2 AS $col => $val) {
+					$cols .= ($cols?",":"")."`{$col}`";
+				}
 
 				if ($db_file_all_fh) {
 					$fszhs = array(
@@ -964,8 +975,9 @@ class BURAN
 						$tblhash,
 						$row[0],
 						$keys,
+						$cols,
 					);
-					$fres = fputcsv($db_file_all_fh,$fszhs,';');
+					$fres = fputcsv($db_file_all_fh,$fszhs);
 				}
 			}
 
@@ -985,13 +997,13 @@ class BURAN
 				$this->max['cntr'][0]['cnt']++;
 
 				$dbrow = "";
-				$dbrow_key = "";
+				$dbrow_keys = "";
 				foreach ($row2 AS $key => $val) {
 					$val = $this->db->real_escape_string($val);
 					$dbrow .= ($dbrow?",":"")."`{$key}`='{$val}'";
-
+					
 					if ($state['keys_ar'][$key]) {
-						$dbrow_key .= ($dbrow_key?",":"")."`{$key}`='{$val}'";
+						$dbrow_keys .= ($dbrow_keys?",":"")."`{$key}`='{$val}'";
 					}
 				}
 				$dbrow_hash = md5($dbrow);
@@ -1001,9 +1013,10 @@ class BURAN
 						'row',
 						$dbrow_hash,
 						$row[0],
-						$dbrow_key,
+						$dbrow_keys,
+						'',
 					);
-					$fres = fputcsv($db_file_all_fh,$fszhs,';');
+					$fres = fputcsv($db_file_all_fh,$fszhs);
 				}
 
 				if ($this->max()) {
@@ -1210,9 +1223,7 @@ class BURAN
 		$uniq = $this->uniq;
 
 		$etfile1 = preg_replace("/[^a-z0-9\-_]/",'',$etfile1);
-		if ($etfile1) $etfile1 = '/'.$etfile1;
 		$etfile2 = preg_replace("/[^a-z0-9\-_]/",'',$etfile2);
-		if ($etfile2) $etfile2 = '/'.$etfile2;
 
 		$dir = $this->conf('etalon_dir');
 
@@ -1293,7 +1304,7 @@ class BURAN
 		$res['state'] = $state;
 		$res['uniq']  = $uniq;
 		$res['dir']   = $dir;
-
+		
 		$fszhs = array(
 			'rowtp',
 			'cmprres',
@@ -1314,7 +1325,7 @@ class BURAN
 		);
 		if ($cmpr_file_all_fh) {
 			if ($state['step']['frst']) {
-				$fres = fputcsv($cmpr_file_all_fh,$fszhs,';');
+				$fres = fputcsv($cmpr_file_all_fh,$fszhs);
 			}
 		} else {
 			$this->res['errors'][] = array('num'=>'0905');
@@ -1328,7 +1339,7 @@ class BURAN
 		if ($state['step']['num'] === 1) {
 			$step_flag = true;
 			$state['step']['cnt']++;
-	
+			
 			if ($etfile1_db) {
 				$fetres = $this->db_etalon_cmpr($etfile1_db, $etfile2_db, $cmpr_file_all_fh);
 		
@@ -1394,7 +1405,7 @@ class BURAN
 		return $res;
 	}
 
-	function db_etalon_cmpr($file1, $file2, $resfh) {
+	function db_etalon_cmpr($file1, $file2, $cmprfh) {
 		$res = array(
 			'method' => 'db_etalon_cmpr',
 			'ok'     => 'n',
@@ -1414,8 +1425,11 @@ class BURAN
 				'tbl'    => false,
 				'offset' => 0,
 				'keys'   => '',
+				'tbls'   => array(),
 			);
 		}
+
+		$state['cnt']++;
 	
 		$res['state'] = $state;
 		$res['uniq']  = $uniq;
@@ -1434,6 +1448,80 @@ class BURAN
 		$dbcres = $this->db_connect();
 		if ($dbcres['ok'] != 'y') return $res;
 
+		if ($state['cnt'] == 1) {
+			$dbres = $this->db->query("SHOW TABLES");
+			if ( ! $dbres) {
+				$this->res['errors'][] = array('num'=>'0104');
+				return $res;
+			}
+			while ($row = $dbres->fetch_row()) {
+				$state['tbls'][$row[0]] = $row[0];
+			}
+		}
+
+		if ( ! $state['tbls'] || ! is_array($state['tbls'])) {
+			$this->res['errors'][] = array('num'=>'1406');
+			return $res;
+		}
+
+		$file1_fh = fopen($file1,'rb');
+		$file1_lst = false;
+		if ($file1_fh) {
+			$file1_lst = array();
+			while ($row = fgetcsv($file1_fh,0)) {
+				if ( ! in_array($row[0],array('tbl','row'))) continue;
+
+				if ($state['cnt'] == 1) {
+					if ($state['tbls'][$row[2]]) {
+						if ($row[0] == 'row') {
+							//todo
+						}
+
+					} else {
+						if ($row[0] == 'tbl') {
+							$fszhs = array(
+								'tbl',
+								'rem',
+								$row[2],
+								'',
+								'',
+								'',
+								'',
+							);
+							$fres = fputcsv($cmprfh,$fszhs);
+
+						} elseif ($row[0] == 'row') {
+							$fszhs = array(
+								'row',
+								'rem',
+								$row[2],
+								$row[3],
+								'',
+								'',
+								'',
+							);
+							$fres = fputcsv($cmprfh,$fszhs);
+						}
+					}
+				}
+				if ( ! $state['tbls'][$row[2]]) continue;
+
+				$file1_lst[$row[2]]['nm'] = $row[2];
+				if ($row[0] == 'tbl') {
+					$file1_lst[$row[2]]['cols'] = $row[4];
+					$file1_lst[$row[2]]['keys'] = $row[3];
+					$file1_lst[$row[2]]['hsh'] = $row[1];
+
+				} elseif ($row[0] == 'row') {
+					$file1_lst[$row[2]]['rows'][$row[3]] = $row[1];
+				}
+			}
+			$state['sdfsdfsdfsdf'] = $file1_lst; //todo
+		} else {
+			$this->res['errors'][] = array('num'=>'1405');
+			return $res;
+		}
+
 		$limit = intval($this->conf('maxitems','db'));
 		if ( ! $limit) $limit = 9999;
 		$this->max['cntr'][0] = array(
@@ -1441,50 +1529,174 @@ class BURAN
 			'max' => $limit,
 			'cnt' => 0,
 		);
+
+		foreach ($state['tbls'] AS $tbl) {
+
+			if (
+				$state['tbl']
+				&& $tbl != $state['tbl']
+			) continue;
+			$ii_tbl = $tbl;
+			$state['tbl'] = false;
+
+			if ( ! $state['offset']) {
+				$dbres2 = $this->db->query("SELECT *
+					FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+					WHERE TABLE_NAME=N'{$tbl}'
+					ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
+				if ( ! $dbres2) {
+					$this->res['errors'][] = array('num'=>'0112');
+					continue;
+				}
+				$keys = "";
+				$keys_nm = false;
+				$keys_ar = array();
+				while ($row2 = $dbres2->fetch_assoc()) {
+					if (
+						$keys_nm
+						&& $keys_nm !== $row2['CONSTRAINT_NAME']
+					) break;
+					$keys_nm = $row2['CONSTRAINT_NAME'];
+					$keys .= ($keys?",":"")."`".$row2['COLUMN_NAME']."`";
+					$keys_ar[$row2['COLUMN_NAME']] = $row2['COLUMN_NAME'];
+				}
+				$state['keys'] = $keys;
+				$state['keys_ar'] = $keys_ar;
 	
-		$state['cnt']++;
+				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$tbl}`");
+				if ( ! $dbres2) {
+					$this->res['errors'][] = array('num'=>'0105');
+					continue;
+				}
+				$row2 = $dbres2->fetch_row();
+				$tblhash = md5($row2[1]);
 
-		$file1_fh = fopen($file1,'rb');
-		$file1_lst = false;
-		if ($file1_fh) {
-			$file1_lst = array();
-			while ($row = fgetcsv($file1_fh)) {
-				$row = str_getcsv($row[0],';');
+				if (
+					! isset($file1_lst[$tbl])
+					|| ! $file1_lst[$tbl]['nm']
+				) {
+					$fszhs = array(
+						'tbl',
+						'crt',
+						$tbl,
+						'',
+						'',
+						'',
+						'',
+					);
+					$fres = fputcsv($cmprfh,$fszhs);
 
-				$file1_lst[$row[2]]['nm'] = $row[2];
-				if ($row[0] == 'tbl') {
-					$file1_lst[$row[2]]['keys'] = $row[3];
-					$file1_lst[$row[2]]['hsh'] = $row[1];
-
-				} elseif ($row[0] == 'tbl') {
-					$file1_lst[$row[2]]['rows'][$row[3]] = $row[1];
-
-				} else continue;
-
-				if ($state['cnt'] !== 1) continue;
-
-				$dbres = $this->db->query("SELECT * FROM `{$row[2]}` LIMIT 1");
-				if ( ! $dbres) {
-					$this->res['errors'][] = array('num'=>'0104');
-					return $res;
-				} elseif ($dbres->num_rows) continue;
-
-				$fszhs = array(
-					'tbl',
-					'cmprres',
-					'nm',
-					'prm1',
-					'prm2',
-					'prm3',
-					'prm4',
-				);
-		
-				$fres = fputcsv($resfh,$fszhs,';');
+				} elseif (
+					$tblhash != $file1_lst[$tbl]['hsh']
+					|| $keys != $file1_lst[$tbl]['keys']
+				) {
+					$fszhs = array(
+						'tbl',
+						'chg',
+						$tbl,
+						'',
+						'',
+						'',
+						'',
+					);
+					$fres = fputcsv($cmprfh,$fszhs);
+				}
 			}
-		} else {
-			$this->res['errors'][] = array('num'=>'1405');
-			return $res;
+
+			$q = "SELECT * FROM `{$tbl}`";
+			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
+			$q .= " LIMIT ".($limit+100)." OFFSET ".$state['offset'];
+	
+			$dbres2 = $this->db->query($q);
+			if ( ! $dbres2) {
+				$this->res['errors'][] = array('num'=>'0106');
+				continue;
+			}
+	
+			$ii = 0;
+			while ($row2 = $dbres2->fetch_assoc()) {
+				$ii++;
+				$this->max['cntr'][0]['cnt']++;
+	
+				$dbrow = "";
+				$dbrow_keys = "";
+				foreach ($row2 AS $key => $val) {
+					$val = $this->db->real_escape_string($val);
+					$dbrow .= ($dbrow?",":"")."`{$key}`='{$val}'";
+	
+					if ($state['keys_ar'][$key]) {
+						$dbrow_keys .= ($dbrow_keys?",":"")."`{$key}`='{$val}'";
+					}
+				}
+				$dbrow_hash = md5($dbrow);
+
+				if (
+					! isset($file1_lst[$tbl])
+					|| ! $file1_lst[$tbl]['nm']
+					|| ! isset($file1_lst[$tbl]['rows'][$dbrow_keys])
+					|| ! $file1_lst[$tbl]['rows'][$dbrow_keys]
+				) {
+					$fszhs = array(
+						'row',
+						'crt',
+						$tbl,
+						$dbrow_keys,
+						'',
+						'',
+						'',
+					);
+					$fres = fputcsv($cmprfh,$fszhs);
+
+				} elseif ($dbrow_hash != $file1_lst[$tbl]['rows'][$dbrow_keys]) {
+					$fszhs = array(
+						'row',
+						'chg',
+						$tbl,
+						$dbrow_keys,
+						'',
+						'',
+						'',
+					);
+					$fres = fputcsv($cmprfh,$fszhs);
+				}
+	
+				if ($this->max()) {
+					$flag_max = true;
+					break;
+				}
+			}
+
+			if ( ! $this->max['flag']) {
+				$state['offset'] = 0;
+				$state['keys'] = '';
+			}
+	
+			if ($this->max()) {
+				$flag_max = true;
+			}
+			if ($flag_max) break;
 		}
+
+		$state['tbl'] = $ii_tbl;
+		$state['offset'] += $ii;
+
+		if ($this->max['flag']) {
+			$res['max'] = true;
+
+			$foores = $this->proccess_state($statefile,$state,true);
+			if ( ! $foores) {
+				$this->res['errors'][] = array('num'=>'0109');
+				return $res;
+			}
+
+		} else {
+			$res['completed'] = 'y';
+			$this->proccess_state($statefile,'rem');
+		}
+
+		$res['state'] = $state;
+		$res['ok'] = 'y';
+		return $res;
 	}
 
 	function fls_remove($path) {
@@ -1732,8 +1944,7 @@ class BURAN
 				if ( ! $fh) continue;
 				$mailscnt = 0;
 				$last_er = 0;
-				while (($row = fgetcsv($fh)) !== false) {
-					$row = str_getcsv($row[0],';');
+				while (($row = fgetcsv($fh,0,';')) !== false) {
 					if (
 						$row[1] == '+'
 						&& $row[0] > time()-(60*60*24*7)
