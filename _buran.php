@@ -64,8 +64,15 @@ if ('etalon_compare' == $bu->act) {
 	$file1 = $_GET['file'];
 	$file2 = $_GET['file2'];
 	$getlist = $_GET['getlist']=='y' ? true : false;
-	$mres = $bu->etalon_compare($file1,$file2,$getlist);
-	$bu->res['mres'][] = $mres;
+	$cmprres = $_GET['cmprres']=='y' ? true : false;
+	$go = $_GET['go']=='y' ? true : false;
+	$mres = $bu->etalon_compare($file1,$file2,$getlist,$cmprres,$go);
+	if ($go) {
+		$bu->res_ctp = 'html';
+		$bu->res['data'] = $mres;
+	} else {
+		$bu->res['mres'][] = $mres;
+	}
 }
 
 if ('fls_remove' == $bu->act) {
@@ -1213,16 +1220,13 @@ class BURAN
 		return $res;
 	}
 
-	function etalon_compare($etfile1=false, $etfile2=false, $getlist=false) {
+	function etalon_compare($etfile1=false, $etfile2=false, $getlist=false, $cmprres=false, $go=false) {
 		$res = array(
 			'method' => 'etalon_compare',
 			'ok'     => 'n',
 		);
 
 		$uniq = $this->uniq;
-
-		$etfile1 = preg_replace("/[^a-z0-9\-_]/",'',$etfile1);
-		$etfile2 = preg_replace("/[^a-z0-9\-_]/",'',$etfile2);
 
 		$dir = $this->conf('etalon_dir');
 
@@ -1244,7 +1248,12 @@ class BURAN
 
 		if ($getlist) {
 			$files = array();
-			$lists = glob($lst_folder.$lst_file.'_*');
+
+			if ($cmprres) {
+				$lists = glob($cmpr_folder.$cmpr_file.'_*');
+			} else {
+				$lists = glob($lst_folder.$lst_file.'_*');
+			}
 			if ($lists) {
 				foreach ($lists AS $list) {
 					$fl = basename($list);
@@ -1258,30 +1267,104 @@ class BURAN
 			$res['ok'] = 'y';
 			return $res;
 		}
-
-		$etfile1_db = $db_folder.$db_file.$lastfile;
-		$etfile2_db = false;
-		$etfile1_lst = $lst_folder.$lst_file.$lastfile;
-		$etfile2_lst = false;
+		
+		if ($etfile1) $etfile1 = preg_replace("/[^a-z0-9\-_]/",'',$etfile1);
+		if ($etfile2) $etfile2 = preg_replace("/[^a-z0-9\-_]/",'',$etfile2);
+		if ( ! $cmprres && ! $etfile1 && $etfile2) {
+			$etfile1 = $etfile2;
+			$etfile2 = false;
+		}
 		if ($etfile1) {
 			$etfile1_db = $db_folder.$db_file.'_'.$etfile1;
-			// if ( ! file_exists($etfile1_db)) $etfile1_db = false;
 			$etfile1_lst = $lst_folder.$lst_file.'_'.$etfile1;
-			// if ( ! file_exists($etfile1_lst)) $etfile1_lst = false;
+		} else {
+			$etfile1_db = $db_folder.$db_file.$lastfile;
+			$etfile1_lst = $lst_folder.$lst_file.$lastfile;
 		}
 		if ($etfile2) {
 			$etfile2_db = $db_folder.$db_file.'_'.$etfile2;
-			// if ( ! file_exists($etfile2_db)) $etfile2_db = false;
 			$etfile2_lst = $lst_folder.$lst_file.'_'.$etfile2;
-			// if ( ! file_exists($etfile2_lst)) $etfile2_lst = false;
-		}
-		if ( ! $etfile1_db && $etfile2_db) {
-			$etfile1_db = $etfile2_db;
+		} else {
 			$etfile2_db = false;
-		}
-		if ( ! $etfile1_lst && $etfile2_lst) {
-			$etfile1_lst = $etfile2_lst;
 			$etfile2_lst = false;
+		}
+
+		if ($cmprres) {
+			$etfile1_cmpr = $cmpr_folder.$cmpr_file.$lastfile;
+			if ($etfile1) {
+				$etfile1_cmpr = $cmpr_folder.$cmpr_file.'_'.$etfile1;
+			}
+
+			if ( ! $go) {
+				$res['completed'] = 'y';
+				$res['ok'] = 'n';
+				if (file_exists($etfile1_cmpr)) {
+					$res['ok'] = 'y';
+				}
+				return $res;
+			}
+
+			$file1_fh = fopen($etfile1_cmpr,'rb');
+			if ( ! $file1_fh) {
+				return 'Ошибка';
+			}
+			
+			$data = array();
+			while ($row = fgetcsv($file1_fh,0)) {
+				if ($row[0] == 'inf') {
+					$p = '<tr class="info inf_dt">
+						<td>'.$row[1].'</td>
+						<td>'.date('d.m.Y, H:i:s',$row[2]).'</td>
+						<td></td>
+						<td></td>
+						<td>'.$row[3].' -> '.$row[4].'<br>'.$row[5].' -> '.$row[6].'</td>
+					</tr>';
+
+				} elseif ($row[0] == 'fls') {
+					if (substr($row[6],0,1) != '/') continue;
+					$ext = substr($row[6],strrpos($row[6],'/'));
+					$pnt = strrpos($ext,'.');
+					if ($pnt !== false) {
+						$ext = substr($ext,strrpos($ext,'.'));
+						$ext = strtolower($ext);
+					} else $ext = '.';
+					$p = '<tr class="stat_'.$row[1].'">
+						<td>'.$row[1].'</td>
+						<td>';
+					if ($row[2]) $p .= date('d.m.Y, H:i:s',$row[2]).'<br>';
+					if ($row[4]) $p .= date('d.m.Y, H:i:s',$row[4]);
+					$p .= '</td>
+						<td>'.$row[3].' -> '.$row[5].'</td>
+						<td>'.$ext.'</td>
+						<td>'.$row[6].'</td>
+					</tr>';
+
+				} elseif ($row[0] == 'row') {
+					$p = '<tr class="stat_'.$row[1].'">
+						<td>'.$row[1].'</td>
+						<td>'.$row[2].'</td>
+						<td></td>
+						<td>.'.$row[0].'</td>
+						<td>'.$row[3].'</td>
+					</tr>';
+
+				} elseif ($row[0] == 'tbl') {
+					$p = '<tr class="stat_'.$row[1].'">
+						<td>'.$row[1].'</td>
+						<td>'.$row[2].'</td>
+						<td></td>
+						<td>.'.$row[0].'</td>
+						<td>'.$row[3].'</td>
+					</tr>';
+
+				} else {
+					continue;
+				}
+
+				$data[$row[0]][$row[1]] .= $p;
+			}
+			$resp = '<table class="table_compare">'.$data['inf']['dt'].$data['tbl']['crt'].$data['tbl']['rem'].$data['tbl']['chg'].$data['row']['crt'].$data['row']['rem'].$data['row']['chg'].$data['fls']['crt'].$data['fls']['rem'].$data['fls']['chg'].'</table>';
+			return $resp;
 		}
 
 		$statefile = $dir.'/state_etcmpr_'.$uniq;
@@ -1313,6 +1396,15 @@ class BURAN
 			'prm3',
 			'prm4',
 		);
+		$fszhs_inf_dt = array(
+			'inf',
+			'dt',
+			time(),
+			basename($etfile1_db),
+			($etfile2_db ? basename($etfile2_db) : '[current]'),
+			basename($etfile1_lst),
+			($etfile2_lst ? basename($etfile2_lst) : '[current]'),
+		);
 
 		if (file_exists($cmpr_folder.$cmpr_file.'_'.$uniq)) {
 			$this->res['errors'][] = array('num'=>'0909');
@@ -1325,6 +1417,7 @@ class BURAN
 		if ($cmpr_file_all_fh) {
 			if ($state['step']['frst']) {
 				$fres = fputcsv($cmpr_file_all_fh,$fszhs);
+				$fres = fputcsv($cmpr_file_all_fh,$fszhs_inf_dt);
 			}
 		} else {
 			$this->res['errors'][] = array('num'=>'0905');
