@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.5-alfa');
+$bu = new BURAN('3.5');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -737,7 +737,8 @@ class BURAN
 					? true : false;
 
 				$size = filesize($this->droot.$file);
-				$hash = md5_file($this->droot.$file);
+				$hash = $size > $this->conf('maxmemory')
+					? '' : md5_file($this->droot.$file);
 				$fctm = $this->filetime($this->droot.$file);
 
 				if ($size > $this->conf('max_etalon_txt_file')) {
@@ -866,6 +867,8 @@ class BURAN
 		$folder = $this->droot.$this->mdir.$dir;
 		if ( ! file_exists($folder)) mkdir($folder,0755,true);
 
+		$maxitems = intval($this->conf('maxitems','db'));
+
 		$statefile = $this->conf('etalon_dir').'/state_db_'.$uniq;
 		$state = $this->proccess_state($statefile,false,true);
 		if ($state === false) {
@@ -876,6 +879,7 @@ class BURAN
 			$state = array(
 				'cnt'    => 0,
 				'tbl'    => false,
+				'limit'  => $maxitems,
 				'offset' => 0,
 				'keys'   => '',
 			);
@@ -898,8 +902,7 @@ class BURAN
 		$dbcres = $this->db_connect();
 		if ($dbcres['ok'] != 'y') return $res;
 
-		$limit = intval($this->conf('maxitems','db'));
-		if ( ! $limit) $limit = 9999;
+		$limit = intval($state['limit']);
 		$this->max['cntr'][0] = array(
 			'nm'  => 'maxitems',
 			'max' => $limit,
@@ -1010,13 +1013,32 @@ class BURAN
 
 			$q = "SELECT * FROM `{$row[0]}`";
 			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
-			$q .= " LIMIT ".($limit+100)." OFFSET ".$state['offset'];
+			$q .= " LIMIT ".($limit+10)." OFFSET ".$state['offset'];
+
+			$foomem1 = memory_get_peak_usage(true);
 
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
 				$this->res['errors'][] = array('num'=>'0106');
-				continue;
+				break;
 			}
+
+			$foomem2 = memory_get_peak_usage(true);
+			$foomem_otn1 = $this->conf('maxmemory') / ($foomem2 > $foomem1 ? ($foomem2-$foomem1) : 1);
+			$foomem_otn2 = $this->conf('maxmemory') / $foomem2;
+
+			if ($foomem_otn1 < 1) {
+				$limit = $limit * ($foomem_otn1/2);
+			} elseif ($foomem_otn1 < 2) {
+				$limit = $limit * 0.5;
+			} elseif ($foomem_otn1 > 10 && $foomem_otn2 > 10) {
+				$limit = $limit * 1.5;
+			}
+			$limit = intval($limit);
+			if ( ! $limit || $limit > $maxitems) {
+				$limit = $maxitems;
+			}
+			$state['limit'] = $limit;
 
 			$ii = 0;
 			while ($row2 = $dbres2->fetch_assoc()) {
@@ -1598,9 +1620,11 @@ class BURAN
 				$changed = $created = false;
 				if ($prev) {
 					if ($prev[2] == $size) {
-						$hash = md5_file($this->droot.$file);
-						if ($prev[0] != $hash) {
-							$changed = true;
+						if ($size <= $this->conf('maxmemory')) {
+							$hash = md5_file($this->droot.$file);
+							if ($prev[0] != $hash) {
+								$changed = true;
+							}
 						}
 					} else $changed = true;
 				} else $created = true;
@@ -1687,6 +1711,8 @@ class BURAN
 
 		$uniq = $this->uniq;
 
+		$maxitems = intval($this->conf('maxitems','db'));
+
 		$statefile = $this->conf('etalon_dir').'/state_dbetcmpr_'.$uniq;
 		$state = $this->proccess_state($statefile,false,true);
 		if ($state === false) {
@@ -1698,6 +1724,7 @@ class BURAN
 				'cnt'    => 0,
 				'step'   => 1,
 				'csvln'  => 0,
+				'limit'  => $maxitems,
 				'tbl'    => false,
 				'offset' => 0,
 				'keys'   => '',
@@ -1738,8 +1765,7 @@ class BURAN
 			return $res;
 		}
 
-		$limit = intval($this->conf('maxitems','db'));
-		if ( ! $limit) $limit = 9999;
+		$limit = intval($state['limit']);
 		$this->max['cntr'][0] = array(
 			'nm'  => 'maxitems',
 			'max' => $limit,
@@ -1921,13 +1947,32 @@ class BURAN
 
 				$q = "SELECT * FROM `{$tbl}`";
 				if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
-				$q .= " LIMIT ".($limit+100)." OFFSET ".$state['offset'];
+				$q .= " LIMIT ".($limit+10)." OFFSET ".$state['offset'];
 		
+				$foomem1 = memory_get_peak_usage(true);
+
 				$dbres2 = $this->db->query($q);
 				if ( ! $dbres2) {
 					$this->res['errors'][] = array('num'=>'0106');
-					continue;
+					break;
 				}
+
+				$foomem2 = memory_get_peak_usage(true);
+				$foomem_otn1 = $this->conf('maxmemory') / ($foomem2 > $foomem1 ? ($foomem2-$foomem1) : 1);
+				$foomem_otn2 = $this->conf('maxmemory') / $foomem2;
+	
+				if ($foomem_otn1 < 1) {
+					$limit = $limit * ($foomem_otn1/2);
+				} elseif ($foomem_otn1 < 2) {
+					$limit = $limit * 0.5;
+				} elseif ($foomem_otn1 > 10 && $foomem_otn2 > 10) {
+					$limit = $limit * 1.5;
+				}
+				$limit = intval($limit);
+				if ( ! $limit || $limit > $maxitems) {
+					$limit = $maxitems;
+				}
+				$state['limit'] = $limit;
 		
 				$ii = 0;
 				while ($row2 = $dbres2->fetch_assoc()) {
@@ -3092,11 +3137,4 @@ class BURAN
 // ----------------------------------------------
 // ----------------------------------------------
 // ----------------------------------------------
-// ----------------------------------------------
-// ----------------------------------------------
-// ----------------------------------------------
-// ----------------------------------------------
-// ----------------------------------------------
-// ----------------------------------------------
-// ----------------------------------------------
-// -----------------------------------------
+// ------------------------------------------------
