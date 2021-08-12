@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.5-beta');
+$bu = new BURAN('3.5-alfa');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -434,6 +434,8 @@ class BURAN
 			return $res;
 		}
 
+		$maxitems = intval($this->conf('maxitems','db'));
+
 		$state = $this->proccess_state($statefile,false,true);
 		if ($state === false) {
 			$this->res['errors'][] = array('num'=>'0101');
@@ -442,6 +444,7 @@ class BURAN
 			$state_new = true;
 			$state = array(
 				'tbl'    => false,
+				'limit'  => $maxitems,
 				'offset' => 0,
 				'keys'   => '',
 			);
@@ -471,8 +474,7 @@ class BURAN
 			return $res;
 		}
 
-		$limit = intval($this->conf('maxitems','db'));
-		if ( ! $limit) $limit = 9999;
+		$limit = intval($state['limit']);
 		$this->max['cntr'][0] = array(
 			'nm'  => 'maxitems',
 			'max' => $limit,
@@ -525,13 +527,32 @@ class BURAN
 
 			$q = "SELECT * FROM `{$row[0]}`";
 			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
-			$q .= " LIMIT ".($limit+100)." OFFSET ".$state['offset'];
+			$q .= " LIMIT ".($limit+10)." OFFSET ".$state['offset'];
+			
+			$foomem1 = memory_get_peak_usage(true);
 
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
 				$this->res['errors'][] = array('num'=>'0106');
-				continue;
+				break;
 			}
+
+			$foomem2 = memory_get_peak_usage(true);
+			$foomem_otn1 = $this->conf('maxmemory') / ($foomem2 > $foomem1 ? ($foomem2-$foomem1) : 1);
+			$foomem_otn2 = $this->conf('maxmemory') / $foomem2;
+
+			if ($foomem_otn1 < 1) {
+				$limit = $limit * ($foomem_otn1/2);
+			} elseif ($foomem_otn1 < 2) {
+				$limit = $limit * 0.5;
+			} elseif ($foomem_otn1 > 10 && $foomem_otn2 > 10) {
+				$limit = $limit * 1.5;
+			}
+			$limit = intval($limit);
+			if ( ! $limit || $limit > $maxitems) {
+				$limit = $maxitems;
+			}
+			$state['limit'] = $limit;
 
 			$ii = 0;
 			while ($row2 = $dbres2->fetch_assoc()) {
@@ -3068,4 +3089,14 @@ class BURAN
 	}
 }
 // ----------------------------------------------
-// --------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// ----------------------------------------------
+// -----------------------------------------
