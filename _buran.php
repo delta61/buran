@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.5');
+$bu = new BURAN('3.6');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -147,7 +147,7 @@ class BURAN
 		$this->version = $version;
 		$this->mfile   = '_buran.php';
 		$this->mdir    = '/_buran/buran';
-		$this->bunker  = 'http://bunker-yug.ru';
+		$this->bunker  = 'bunker-yug.ru';
 		$this->mua     = 'BuranModule/'.$version;
 		$this->mhash   = md5(__FILE__);
 
@@ -180,6 +180,8 @@ class BURAN
 						? $_SERVER['SCRIPT_NAME']
 						: $_SERVER['PHP_SELF'];
 		$this->uri = $_SERVER['REQUEST_URI'];
+
+		$this->bunker_prcl = substr($_SERVER['HTTP_ORIGIN'],0,strpos($_SERVER['HTTP_ORIGIN'],'://')+3);
 
 		$this->iswritable = is_writable($this->droot.$this->mdir.'/')
 			? true : false;
@@ -224,7 +226,7 @@ class BURAN
 			}
 		}
 
-		header('Access-Control-Allow-Origin: '.$this->bunker);
+		header('Access-Control-Allow-Origin: *');
 
 		$res = ob_start(array($this,'ob_end'));
 	}
@@ -2798,10 +2800,9 @@ class BURAN
 		);
 		$file = preg_replace("/[^a-z0-9\-_]/",'',$file);
 		$file = '/buran/update/buran'.($file?'_'.$file:'');
-		$bunkerhost = substr($this->bunker,strpos($this->bunker,'://')+3);
 		if ($this->curl_ext) {
 			$options = array(
-				CURLOPT_URL => $this->bunker.$file,
+				CURLOPT_URL => $this->bunker_prcl.$this->bunker.$file,
 				CURLOPT_RETURNTRANSFER => true,
 			);
 			$curl = curl_init();
@@ -2819,9 +2820,9 @@ class BURAN
 		}
 		if ( ! $code && $this->sock_ext) {
 			$code = '';
-			$headers = "GET ".$this->bunker.$file." HTTP/1.0\n";
-			$headers .= "Host: {$bunkerhost}\n\n";
-			$sockres = stream_socket_client($bunkerhost.':80',$errno,$errstr,10);
+			$headers = "GET ".$this->bunker_prcl.$this->bunker.$file." HTTP/1.0\n";
+			$headers .= "Host: {$this->bunker}\n\n";
+			$sockres = stream_socket_client($this->bunker.':80',$errno,$errstr,10);
 			if ($sockres) {
 				fwrite($sockres,$headers);
 				while ( ! feof($sockres)) {
@@ -2833,7 +2834,7 @@ class BURAN
 			}
 		}
 		if ( ! $code && $this->fgc_ext) {
-			$code = file_get_contents($this->bunker.$file);
+			$code = file_get_contents($this->bunker_prcl.$this->bunker.$file);
 		}
 		if ($code) {
 			$fres = $this->bufile('module','set','',$code);
@@ -2909,14 +2910,13 @@ class BURAN
 		unset($_SESSION['buran']);
 		$this->htaccess();
 
-		$bunkerhost = substr($this->bunker,strpos($this->bunker,'://')+3);
 		$url = '/buran/key.php';
 		$url .= '?h='.$this->domain;
 		$url .= '&w='.$get_w;
 
 		if ($this->curl_ext) {
 			$options = array(
-				CURLOPT_URL => $this->bunker.$url,
+				CURLOPT_URL => $this->bunker_prcl.$this->bunker.$url,
 				CURLOPT_RETURNTRANSFER => true,
 			);
 			$curl = curl_init();
@@ -2933,9 +2933,9 @@ class BURAN
 			}
 		}
 		if ( ! $ww && $this->sock_ext) {
-			$headers = "GET ".$this->bunker.$url." HTTP/1.0\n";
-			$headers .= "Host: {$bunkerhost}\n\n";
-			$sockres = stream_socket_client($bunkerhost.':80',$errno,$errstr,10);
+			$headers = "GET ".$this->bunker_prcl.$this->bunker.$url." HTTP/1.0\n";
+			$headers .= "Host: {$this->bunker}\n\n";
+			$sockres = stream_socket_client($this->bunker.':80',$errno,$errstr,10);
 			if ($sockres) {
 				fwrite($sockres,$headers);
 				while ( ! feof($sockres)) {
@@ -2949,7 +2949,7 @@ class BURAN
 			}
 		}
 		if ( ! $ww && $this->fgc_ext) {
-			$ww = file_get_contents($this->bunker.$url);
+			$ww = file_get_contents($this->bunker_prcl.$this->bunker.$url);
 		}
 		if ($ww && $get_w && $ww === $get_w) {
 			$_SESSION['buran']['auth'][$get_w] = time();
@@ -3136,5 +3136,4 @@ class BURAN
 // ----------------------------------------------
 // ----------------------------------------------
 // ----------------------------------------------
-// ----------------------------------------------
-// ------------------------------------------------
+// -----------------------------------
