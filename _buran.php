@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.6');
+$bu = new BURAN('3.7-beta');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -2502,6 +2502,9 @@ class BURAN
 			$this->cms_ver  = $wp_version;
 			$this->cms_date = '';
 			$this->cms_name = '';
+			$this->cache_dirs = array(
+				'/wp-content/cache/',
+			);
 			return true;
 		}
 
