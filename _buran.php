@@ -3125,13 +3125,13 @@ class BURAN
 		$this->tar = $p_tar;
 		return true;
 	}
-	function tarClose($tarfile)
+	function tarClose()
 	{
 		if ( ! $this->tar) return false;
 		if ($this->targzisavailable) {
-			$clsres = gzclose($tarfile);
+			$clsres = gzclose($this->tar);
 		} else {
-			$clsres = fclose($tarfile);
+			$clsres = fclose($this->tar);
 		}
 		return $clsres;
 	}
