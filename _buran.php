@@ -2537,6 +2537,7 @@ class BURAN
 				'/bitrix/cache/',
 				'/bitrix/managed_cache/',
 				'/bitrix/stack_cache/',
+				'/bitrix/html_pages/',
 			);
 			return true;
 		}
