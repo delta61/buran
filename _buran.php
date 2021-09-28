@@ -1796,8 +1796,8 @@ class BURAN
 
 							$dbres2 = $this->db->query("SELECT * FROM `{$row[2]}` WHERE {$q_keys} LIMIT 1");
 							if ( ! $dbres2) {
-								$this->res['errors'][] = array('num'=>'0104');
-								return $res;
+								$this->res['errors'][] = array('num'=>'0113');
+								continue;
 							}
 							if ( ! $dbres2->num_rows) {
 								$fszhs = array(
