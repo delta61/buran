@@ -527,6 +527,14 @@ class BURAN
 				$dump .= $row2[1].";"."\n\n";
 			}
 
+			if (
+				$this->exclude_tbl
+				&& is_array($this->exclude_tbl)
+				&& in_array($row[0], $this->exclude_tbl)
+			) {
+				continue;
+			}
+
 			$q = "SELECT * FROM `{$row[0]}`";
 			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
 			$q .= " LIMIT ".($limit+10)." OFFSET ".$state['offset'];
@@ -2538,6 +2546,9 @@ class BURAN
 				'/bitrix/managed_cache/',
 				'/bitrix/stack_cache/',
 				'/bitrix/html_pages/',
+			);
+			$this->exclude_tbl = array(
+				'b_xml_tree_import_1c',
 			);
 			return true;
 		}
