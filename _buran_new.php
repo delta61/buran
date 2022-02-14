@@ -29,6 +29,10 @@ if ('backup' == $bu->act) {
 	exit();
 }
 if ('etalon' == $bu->act) {
+	if (isset($_GET['do'])) {
+		$bu->act_etalon();
+		exit();
+	}
 	$pntres = $bu->page_etalon();
 	exit();
 }
@@ -120,11 +124,11 @@ class BURAN
 
 			'maxtime'     => 4,
 			'maxmemory'   => 109715200, //1024*1024*200
-			'maxitems'    => 1000,
+			'maxitems'    => 15000,
 
 			'flag_db_dump'             => true,
 			'flag_files_backup'        => true,
-			'files_backup_maxpartsize' => 19715200, //1024*1024*200
+			'files_backup_maxpartsize' => 209715200, //1024*1024*200
 
 			'etalon_ext' => '/.php/.htaccess/.html/.htm/.js/.inc/.css/.sass/.scss/.less/.tpl/.twig/.ini/',
 
@@ -152,6 +156,7 @@ class BURAN
 
 		'db' => array(
 			'maxitems' => 100000,
+			'db_dump_maxpartsize' => 52428800, //1024*1024*50
 		),
 	);
 
@@ -233,6 +238,18 @@ class BURAN
 			}
 		}
 
+		$globinfo = $this->bufile('globinfo', 'get');
+		if (
+			$globinfo
+			&& is_array($globinfo)
+		) {
+			$this->globinfo = $globinfo;
+		} else {
+			$this->globinfo = array(
+				'dt' => time(),
+			);
+		}
+
 		if (isset($_GET['uniq'])) {
 			$uniq = $_GET['uniq'];
 			$uniq = str_replace(array('/','..',' '),'',$uniq);
@@ -303,9 +320,7 @@ class BURAN
 			$step_flag = true;
 
 			$this->parent_mthd = $method;
-			// $subres = $this->fls_archive();
-			$subres['completed'] = 'y';
-			$subres['ok'] = 'y';
+			$subres = $this->fls_archive();
 
 			if (
 				$subres['completed'] == 'y'
@@ -367,7 +382,7 @@ class BURAN
 		$part++;
 
 		$archfile = '/'.$this->domain.'_fls_'.$this->uniq;
-		$archfilepart = $archfile.'_part'.$part;
+		$archfilepart = $archfile.'_part'.str_pad($part,2,'0',STR_PAD_LEFT);
 		
 		if ($this->zip) {
 			$archfilepart .= '.zip';
@@ -461,7 +476,6 @@ class BURAN
 			if ( ! $nextdir) break;
 			if ( ! ($open = opendir($this->droot.$nextdir))) {
 				$this->reqres['errors'][] = array('num'=>'0802');
-				$this->reqres['mres'][] = $res;
 				continue;
 			}
 			while ($file = readdir($open)) {
@@ -519,13 +533,13 @@ class BURAN
 			'ok' => 'n',
 		);
 
-		$maxitems = intval($this->conf('maxitems','db'));
-
 		if ( ! $this->actfile) {
 			$this->reqres['errors'][] = array('num'=>'0802');
 			$this->reqres['mres'][] = $res;
 			return $res;
 		}
+
+		$maxitems = intval($this->conf('maxitems','db'));
 
 		$state = $this->actfile['states'][$method];
 		if ( ! $state) {
@@ -535,6 +549,8 @@ class BURAN
 				'limit'  => $maxitems,
 				'offset' => 0,
 				'keys'   => '',
+				'part' => 1,
+				'lastpartsize' => 0,
 			);
 		}
 
@@ -543,15 +559,20 @@ class BURAN
 		if ( ! file_exists($folder)) mkdir($folder,0755,true);
 		$res['dir'] = $dir;
 
-		$dumpfile = '/'.$this->domain.'_db_'.$this->uniq.'.sql';
+		$part = $state['part'];
 
-		if (file_exists($folder.$dumpfile)) {
+		$dumpfile = '/'.$this->domain.'_db_'.$this->uniq;
+		$dumpfilepart = $dumpfile.'_part'.str_pad($part,2,'0',STR_PAD_LEFT);
+		$dumpfilepart .= '.sql';
+
+		if (file_exists($folder.$dumpfilepart)) {
 			$this->reqres['errors'][] = array('num'=>'0111');
 			$this->reqres['mres'][] = $res;
 			return $res;
 		}
 
 		$res['dumpfile'] = $dumpfile;
+		$res['dumpfilepart'] = $dumpfilepart;
 
 		$fres = $this->cms();
 		if ( ! $fres) {
@@ -604,7 +625,6 @@ class BURAN
 					ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
 				if ( ! $dbres2) {
 					$this->reqres['errors'][] = array('num'=>'0112');
-					$this->reqres['mres'][] = $res;
 					continue;
 				}
 				$keys = "";
@@ -622,7 +642,6 @@ class BURAN
 				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$row[0]}`");
 				if ( ! $dbres2) {
 					$this->reqres['errors'][] = array('num'=>'0105');
-					$this->reqres['mres'][] = $res;
 					continue;
 				}
 
@@ -648,7 +667,6 @@ class BURAN
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
 				$this->reqres['errors'][] = array('num'=>'0106');
-				$this->reqres['mres'][] = $res;
 				break;
 			}
 
@@ -708,7 +726,7 @@ class BURAN
 		$state['offset'] += $ii;
 
 		$procfile = '_process';
-		$fh = fopen($folder.$dumpfile.$procfile,($state_new?'wb':'ab'));
+		$fh = fopen($folder.$dumpfilepart.$procfile,($state_new?'wb':'ab'));
 		if ( ! $fh) {
 			$this->reqres['errors'][] = array('num'=>'0107');
 			$this->reqres['mres'][] = $res;
@@ -722,18 +740,28 @@ class BURAN
 			return $res;
 		}
 
-		if ($this->max['flag']) {
-			$res['max'] = true;
-		} else {
+		$maxpartsize = intval($this->conf('db_dump_maxpartsize'));
+		$partsize = filesize($folder.$dumpfilepart.$procfile);
+		if (
+			! $this->max['flag']
+			|| $partsize > $maxpartsize
+		) {
+			$state['part']++;
+
 			$foores = rename(
-				$folder.$dumpfile.$procfile,
-				$folder.$dumpfile
+				$folder.$dumpfilepart.$procfile,
+				$folder.$dumpfilepart
 			);
 			if ( ! $foores) {
 				$this->reqres['errors'][] = array('num'=>'0110');
 				$this->reqres['mres'][] = $res;
 				return $res;
 			}
+		}
+
+		if ($this->max['flag']) {
+			$res['max'] = true;
+		} else {
 			$res['completed'] = 'y';
 		}
 
@@ -745,19 +773,21 @@ class BURAN
 
 	function fls_etalon()
 	{
+		$method = 'fls_etalon';
 		$res = array(
-			'method' => 'fls_etalon',
-			'ok'     => 'n',
+			'method' => $method,
+			'parent_mthd' => $this->parent_mthd,
+			'ok' => 'n',
 		);
 
-		$uniq = $this->uniq;
-
-		$statefile = $this->conf('etalon_dir').'/state_fls_'.$uniq;
-		$state = $this->proccess_state($statefile,false,true);
-		if ($state === false) {
-			$this->reqres['errors'][] = array('num'=>'0901');
+		if ( ! $this->actfile) {
+			$this->reqres['errors'][] = array('num'=>'0802');
+			$this->reqres['mres'][] = $res;
 			return $res;
-		} elseif ( ! $state || ! is_array($state)) {
+		}
+
+		$state = $this->actfile['states'][$method];
+		if ( ! $state) {
 			$state_new = true;
 			$state = array(
 				'step' => array(
@@ -766,24 +796,14 @@ class BURAN
 			);
 		}
 
-		$res['state'] = $state;
-		$res['uniq']  = $uniq;
-
-		$fres = $this->cms();
-
-		$this->max['cntr'][0] = array(
-			'nm'  => 'maxitems',
-			'max' => $this->conf('maxitems'),
-			'cnt' => 0,
-		);
-
 		$fls_dir = $this->conf('etalon_dir').$this->conf('etalon_fls_dir');
 		$lst_dir = $this->conf('etalon_dir').$this->conf('etalon_lst_dir');
 		$lst_folder = $this->droot.$this->mdir.$lst_dir;
 		if ( ! file_exists($lst_folder)) mkdir($lst_folder,0755,true);
+
 		$lst_file = '/etalon_list';
 		$allfile  = '__last';
-		$procfile = '_'.$uniq.'_process';
+		$procfile = '_'.$this->uniq.'_process';
 
 		$fszhs = array(
 			'hash',
@@ -792,8 +812,9 @@ class BURAN
 			'file',
 		);
 
-		if (file_exists($lst_folder.$lst_file.'_'.$uniq)) {
+		if (file_exists($lst_folder.$lst_file.'_'.$this->uniq)) {
 			$this->reqres['errors'][] = array('num'=>'0909');
+			$this->reqres['mres'][] = $res;
 			return $res;
 		}
 
@@ -806,6 +827,7 @@ class BURAN
 			}
 		} else {
 			$this->reqres['errors'][] = array('num'=>'0905');
+			$this->reqres['mres'][] = $res;
 			return $res;
 		}
 
@@ -815,15 +837,19 @@ class BURAN
 			$state['step']['f_queue'] = array();
 		}
 
+		$this->cms();
+
+		$this->max['cntr'][0] = array(
+			'nm'  => 'maxitems',
+			'max' => $this->conf('maxitems'),
+			'cnt' => 0,
+		);
+
 		$ii = 0;
 		while (true) {
 			while (true) {
 				$file = array_shift($state['step']['f_queue']);
 				if ( ! $file) break;
-
-				$nextdir = dirname($file).'/';
-				if ( ! $nextdir || $nextdir == '.') $nextdir = '/';
-				if (substr($nextdir,-1) != '/') $nextdir .= '/';
 
 				$ii++;
 				if ($ii % 2000 == 0) sleep(2);
@@ -883,7 +909,6 @@ class BURAN
 			if ($flag_max) break;
 
 			$state['step']['f_queue'] = array();
-
 			$nextdir = array_shift($state['step']['d_queue']);
 			if ( ! $nextdir) break;
 			if ( ! ($open = opendir($this->droot.$nextdir))) {
@@ -917,16 +942,10 @@ class BURAN
 		if ($this->max['flag']) {
 			$res['max'] = true;
 
-			$foores = $this->proccess_state($statefile,$state,true);
-			if ( ! $foores) {
-				$this->reqres['errors'][] = array('num'=>'0904');
-				return $res;
-			}
-
 		} else {
 			copy(
 				$lst_folder.$lst_file.$procfile,
-				$lst_folder.$lst_file.'_'.$uniq
+				$lst_folder.$lst_file.'_'.$this->uniq
 			);
 			rename(
 				$lst_folder.$lst_file.$procfile,
@@ -946,7 +965,6 @@ class BURAN
 			}
 
 			$res['completed'] = 'y';
-			$this->proccess_state($statefile,'rem');
 		}
 
 		if ($lst_file_all_fh) fclose($lst_file_all_fh);
@@ -958,73 +976,50 @@ class BURAN
 			$this->tarClose();
 		}
 
-		unset($state['step']['d_queue']);
-
-		$res['state'] = $state;
 		$res['ok'] = 'y';
+		$this->actfile['states'][$method] = $state;
+		$this->reqres['mres'][] = $res;
 		return $res;
 	}
 
 	function db_etalon()
 	{
+		$method = 'db_etalon';
 		$res = array(
-			'method' => 'db_etalon',
-			'ok'     => 'n',
+			'method' => $method,
+			'parent_mthd' => $this->parent_mthd,
+			'ok' => 'n',
 		);
 
-		$uniq = $this->uniq;
-
-		$dir = $this->conf('etalon_dir').$this->conf('etalon_db_dir');
-		$folder = $this->droot.$this->mdir.$dir;
-		if ( ! file_exists($folder)) mkdir($folder,0755,true);
+		if ( ! $this->actfile) {
+			$this->reqres['errors'][] = array('num'=>'0501');
+			$this->reqres['mres'][] = $res;
+			return $res;
+		}
 
 		$maxitems = intval($this->conf('maxitems','db'));
 
-		$statefile = $this->conf('etalon_dir').'/state_db_'.$uniq;
-		$state = $this->proccess_state($statefile,false,true);
-		if ($state === false) {
-			$this->reqres['errors'][] = array('num'=>'0101');
-			return $res;
-		} elseif ( ! $state || ! is_array($state)) {
+		$state = $this->actfile['states'][$method];
+		if ( ! $state) {
 			$state_new = true;
 			$state = array(
-				'cnt'    => 0,
 				'tbl'    => false,
 				'limit'  => $maxitems,
 				'offset' => 0,
 				'keys'   => '',
+				'cnt'    => 0,
 			);
 		}
-
-		$res['state']    = $state;
-		$res['uniq']     = $uniq;
-		$res['dir']      = $dir;
-
-		$fres = $this->cms();
-		if ( ! $fres) {
-			$this->reqres['errors'][] = array('num'=>'0102');
-			return $res;
-		}
-		$fres = $this->db_access();
-		if ( ! $fres) {
-			$this->reqres['errors'][] = array('num'=>'0103');
-			return $res;
-		}
-		$dbcres = $this->db_connect();
-		if ($dbcres['ok'] != 'y') return $res;
-
-		$limit = intval($state['limit']);
-		$this->max['cntr'][0] = array(
-			'nm'  => 'maxitems',
-			'max' => $limit,
-			'cnt' => 0,
-		);
-
 		$state['cnt']++;
+
+		$dir = $this->conf('etalon_dir').$this->conf('etalon_db_dir');
+		$folder = $this->droot.$this->mdir.$dir;
+		if ( ! file_exists($folder)) mkdir($folder,0755,true);
+		$res['dir'] = $dir;
 
 		$db_file = '/etalon_db';
 		$allfile  = '__last';
-		$procfile = '_'.$uniq.'_process';
+		$procfile = '_'.$this->uniq.'_process';
 
 		$fszhs = array(
 			'rtp',
@@ -1034,8 +1029,9 @@ class BURAN
 			'cls',
 		);
 
-		if (file_exists($folder.$db_file.'_'.$uniq)) {
-			$this->reqres['errors'][] = array('num'=>'0105');
+		if (file_exists($folder.$db_file.'_'.$this->uniq)) {
+			$this->reqres['errors'][] = array('num'=>'0502');
+			$this->reqres['mres'][] = $res;
 			return $res;
 		}
 
@@ -1047,15 +1043,42 @@ class BURAN
 				$fres = fputcsv($db_file_all_fh,$fszhs);
 			}
 		} else {
-			$this->reqres['errors'][] = array('num'=>'0106');
+			$this->reqres['errors'][] = array('num'=>'0503');
+			$this->reqres['mres'][] = $res;
+			return $res;
+		}
+
+		$fres = $this->cms();
+		if ( ! $fres) {
+			$this->reqres['errors'][] = array('num'=>'0504');
+			$this->reqres['mres'][] = $res;
+			return $res;
+		}
+		$fres = $this->db_access();
+		if ( ! $fres) {
+			$this->reqres['errors'][] = array('num'=>'0505');
+			$this->reqres['mres'][] = $res;
+			return $res;
+		}
+		$dbcres = $this->db_connect();
+		if ($dbcres['ok'] != 'y') {
+			$this->reqres['mres'][] = $res;
 			return $res;
 		}
 
 		$dbres = $this->db->query("SHOW TABLES");
 		if ( ! $dbres) {
-			$this->reqres['errors'][] = array('num'=>'0104');
+			$this->reqres['errors'][] = array('num'=>'0506');
+			$this->reqres['mres'][] = $res;
 			return $res;
 		}
+
+		$limit = intval($state['limit']);
+		$this->max['cntr'][0] = array(
+			'nm'  => 'maxitems',
+			'max' => $limit,
+			'cnt' => 0,
+		);
 
 		while ($row = $dbres->fetch_row()) {
 
@@ -1073,7 +1096,7 @@ class BURAN
 					WHERE TABLE_NAME=N'{$row[0]}'
 					ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0112');
+					$this->reqres['errors'][] = array('num'=>'0507');
 					continue;
 				}
 				$keys = "";
@@ -1093,7 +1116,7 @@ class BURAN
 
 				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$row[0]}`");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0105');
+					$this->reqres['errors'][] = array('num'=>'0508');
 					continue;
 				}
 				$row2 = $dbres2->fetch_row();
@@ -1101,7 +1124,7 @@ class BURAN
 
 				$dbres2 = $this->db->query("SELECT * FROM `{$row[0]}` LIMIT 1");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0105');
+					$this->reqres['errors'][] = array('num'=>'0509');
 					continue;
 				}
 				$row2 = $dbres2->fetch_assoc();
@@ -1122,6 +1145,14 @@ class BURAN
 				}
 			}
 
+			if (
+				$this->exclude_tbl
+				&& is_array($this->exclude_tbl)
+				&& in_array($row[0], $this->exclude_tbl)
+			) {
+				continue;
+			}
+
 			$q = "SELECT * FROM `{$row[0]}`";
 			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
 			$q .= " LIMIT ".($limit+10)." OFFSET ".$state['offset'];
@@ -1130,7 +1161,7 @@ class BURAN
 
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
-				$this->reqres['errors'][] = array('num'=>'0106');
+				$this->reqres['errors'][] = array('num'=>'0510');
 				break;
 			}
 
@@ -1202,16 +1233,10 @@ class BURAN
 		if ($this->max['flag']) {
 			$res['max'] = true;
 
-			$foores = $this->proccess_state($statefile,$state,true);
-			if ( ! $foores) {
-				$this->reqres['errors'][] = array('num'=>'0109');
-				return $res;
-			}
-
 		} else {
 			copy(
 				$folder.$db_file.$procfile,
-				$folder.$db_file.'_'.$uniq
+				$folder.$db_file.'_'.$this->uniq
 			);
 			rename(
 				$folder.$db_file.$procfile,
@@ -1231,53 +1256,53 @@ class BURAN
 			}
 
 			$res['completed'] = 'y';
-			$this->proccess_state($statefile,'rem');
 		}
 
-		$res['state'] = $state;
 		$res['ok'] = 'y';
+		$this->actfile['states'][$method] = $state;
+		$this->reqres['mres'][] = $res;
 		return $res;
 	}
 
-	function etalon_update()
+	function act_etalon()
 	{
+		$method = 'act_etalon';
 		$res = array(
-			'method' => 'etalon_update',
-			'ok'     => 'n',
+			'method' => $method,
+			'parent_mthd' => $this->parent_mthd,
+			'ok' => 'n',
 		);
 
-		$dir = $this->conf('etalon_dir');
-		$folder = $this->droot.$this->mdir.$dir;
-		if ( ! file_exists($folder)) mkdir($folder,0755,true);
-
-		$uniq = $this->uniq;
-
-		$statefile = $dir.'/state_etalon_'.$uniq;
-		$state = $this->proccess_state($statefile,false,true);
-		if ($state === false) {
-			$this->reqres['errors'][] = array('num'=>'1001');
+		if ( ! $this->actfile) {
+			$this->reqres['errors'][] = array('num'=>'0802');
+			$this->reqres['mres'][] = $res;
 			return $res;
-		} elseif ( ! $state) {
+		}
+
+		$state = $this->actfile['states'][$method];
+		if ( ! $state) {
 			$state_new = true;
 			$state = array(
 				'step' => array(
 					'num' => 1,
-					'cnt' => 0,
 				),
 			);
 		}
+		$this->actfile['states'][$method] = $state;
 
-		$res['state'] = $state;
-		$res['uniq']  = $uniq;
-		$res['dir']   = $dir;
-		
+		$dir = $this->conf('etalon_dir');
+		$folder = $this->droot.$this->mdir.$dir;
+		if ( ! file_exists($folder)) mkdir($folder,0755,true);
+		$res['dir'] = $dir;
+
 		$procfile = '_process';
-		$archfile = '/'.$this->domain.'_etalon_'.$uniq;
+		$archfile = '/'.$this->domain.'_etalon_'.$this->uniq;
 
 		if ($this->zip) {
 			$archfile .= '.zip';
 			if (file_exists($folder.$archfile)) {
 				$this->reqres['errors'][] = array('num'=>'1008');
+				$this->reqres['mres'][] = $res;
 				return $res;
 			}
 			$ziptp = $state['step']['num'] === 1
@@ -1291,6 +1316,7 @@ class BURAN
 			if ($this->targzisavailable) $archfile .= '.gz';
 			if (file_exists($folder.$archfile)) {
 				$this->reqres['errors'][] = array('num'=>'1009');
+				$this->reqres['mres'][] = $res;
 				return $res;
 			}
 			$tartp = $state['step']['num'] === 1 ? 'w' : 'a';
@@ -1300,6 +1326,7 @@ class BURAN
 
 		if ( ! $this->zip && ! $this->tar) {
 			$this->reqres['errors'][] = array('num'=>'1010');
+			$this->reqres['mres'][] = $res;
 			return $res;
 		}
 
@@ -1307,53 +1334,36 @@ class BURAN
 
 		if ($state['step']['num'] === 1) {
 			$step_flag = true;
-			$state['step']['cnt']++;
 
-			$dir_dir = $dir.$this->conf('etalon_db_dir');
-			$dir_folder = $this->droot.$this->mdir.$dir_dir;
+			$this->parent_mthd = $method;
+			$subres = $this->db_etalon();
 
-			$fetres = $this->db_etalon();
-
-			$res['stepres'] = $fetres;
-
-			if ($fetres['completed'] == 'y') {
-				$step_next = true;
-			}
-			if ($fetres['ok'] != 'y') {
-				$step_next = true;
-			}
+			if (
+				$subres['completed'] == 'y'
+				|| $subres['ok'] != 'y'
+			) $nextstep = true;
 		}
 
 		if ($state['step']['num'] === 2) {
 			$step_flag = true;
-			$state['step']['cnt']++;
 
-			$fetres = $this->fls_etalon();
+			$this->parent_mthd = $method;
+			$subres = $this->fls_etalon();
 
-			$res['stepres'] = $fetres;
-
-			if ($fetres['completed'] == 'y') {
-				$step_next = true;
-			}
-			if ($fetres['ok'] != 'y') {
-				$step_next = true;
-			}
+			if (
+				$subres['completed'] == 'y'
+				|| $subres['ok'] != 'y'
+			) $nextstep = true;
 		}
 
 		if ($step_flag) {
-			if ($step_next) {
+			if ($nextstep) {
 				$res['nextstep'] = true;
 				$state = array(
 					'step' => array(
 						'num' => $state['step']['num']+1,
-						'cnt' => 0,
 					),
 				);
-			}
-			$foores = $this->proccess_state($statefile,$state,true);
-			if ( ! $foores) {
-				$this->reqres['errors'][] = array('num'=>'1003');
-				return $res;
 			}
 		} else {
 			$foores = rename(
@@ -1362,817 +1372,16 @@ class BURAN
 			);
 			if ( ! $foores) {
 				$this->reqres['errors'][] = array('num'=>'1004');
+				$this->reqres['mres'][] = $res;
 				return $res;
 			}
 
 			$res['completed'] = 'y';
-			$this->proccess_state($statefile,'rem');
 		}
 
-		$res['state'] = $state;
 		$res['ok'] = 'y';
-		return $res;
-	}
-
-	function etalon_compare($etfile1=false, $etfile2=false, $getlist=false, $cmprres=false, $go=false) {
-		$res = array(
-			'method' => 'etalon_compare',
-			'ok'     => 'n',
-		);
-
-		$uniq = $this->uniq;
-
-		$dir = $this->conf('etalon_dir');
-
-		$cmpr_dir = $dir.$this->conf('etalon_cmpr_dir');
-		$cmpr_folder = $this->droot.$this->mdir.$cmpr_dir;
-		if ( ! file_exists($cmpr_folder)) mkdir($cmpr_folder,0755,true);
-		$cmpr_file = '/etalon_cmpr';
-
-		$db_dir = $dir.$this->conf('etalon_db_dir');
-		$db_folder = $this->droot.$this->mdir.$db_dir;
-		$db_file = '/etalon_db';
-
-		$lst_dir = $dir.$this->conf('etalon_lst_dir');
-		$lst_folder = $this->droot.$this->mdir.$lst_dir;
-		$lst_file = '/etalon_list';
-
-		$lastfile = '__last';
-		$procfile = '_'.$uniq.'_process';
-
-		if ($getlist) {
-			$files = array();
-
-			if ($cmprres) {
-				$lists = glob($cmpr_folder.$cmpr_file.'_*');
-			} else {
-				$lists = glob($lst_folder.$lst_file.'_*');
-			}
-			if ($lists) {
-				foreach ($lists AS $list) {
-					$fl = basename($list);
-					$foo = preg_match("/([0-9]{2,4}-){5}[0-9]{2}$/", $fl, $mtchs);
-					if ( ! $foo) continue;
-					$files[] = $mtchs[0];
-				}
-			}
-			$res['files'] = $files;
-			$res['completed'] = 'y';
-			$res['ok'] = 'y';
-			return $res;
-		}
-		
-		if ($etfile1) $etfile1 = preg_replace("/[^a-z0-9\-_]/",'',$etfile1);
-		if ($etfile2) $etfile2 = preg_replace("/[^a-z0-9\-_]/",'',$etfile2);
-		if ( ! $cmprres && ! $etfile1 && $etfile2) {
-			$etfile1 = $etfile2;
-			$etfile2 = false;
-		}
-		if ($etfile1) {
-			$etfile1_db = $db_folder.$db_file.'_'.$etfile1;
-			$etfile1_lst = $lst_folder.$lst_file.'_'.$etfile1;
-		} else {
-			$etfile1_db = $db_folder.$db_file.$lastfile;
-			$etfile1_lst = $lst_folder.$lst_file.$lastfile;
-		}
-		if ($etfile2) {
-			$etfile2_db = $db_folder.$db_file.'_'.$etfile2;
-			$etfile2_lst = $lst_folder.$lst_file.'_'.$etfile2;
-		} else {
-			$etfile2_db = false;
-			$etfile2_lst = false;
-		}
-
-		if ($cmprres) {
-			$etfile1_cmpr = $cmpr_folder.$cmpr_file.$lastfile;
-			if ($etfile1) {
-				$etfile1_cmpr = $cmpr_folder.$cmpr_file.'_'.$etfile1;
-			}
-
-			if ( ! $go) {
-				$res['completed'] = 'y';
-				$res['ok'] = 'n';
-				if (file_exists($etfile1_cmpr)) {
-					$res['ok'] = 'y';
-				}
-				return $res;
-			}
-
-			$file1_fh = fopen($etfile1_cmpr,'rb');
-			if ( ! $file1_fh) {
-				return 'Ошибка';
-			}
-			
-			$data = array();
-			while ($row = fgetcsv($file1_fh,0)) {
-				if ($row[0] == 'inf') {
-					$p = '<tr class="info inf_dt">
-						<td>'.$row[1].'</td>
-						<td>'.date('d.m.Y, H:i:s',$row[2]).'</td>
-						<td></td>
-						<td></td>
-						<td>'.$row[3].' -> '.$row[4].'<br>'.$row[5].' -> '.$row[6].'</td>
-					</tr>';
-
-				} elseif ($row[0] == 'fls') {
-					if (substr($row[6],0,1) != '/') continue;
-					$ext = substr($row[6],strrpos($row[6],'/'));
-					$pnt = strrpos($ext,'.');
-					if ($pnt !== false) {
-						$ext = substr($ext,strrpos($ext,'.'));
-						$ext = strtolower($ext);
-					} else $ext = '.';
-					$p = '<tr class="stat_'.$row[1].'">
-						<td>'.$row[1].'</td>
-						<td>';
-					if ($row[2]) $p .= date('d.m.Y, H:i:s',$row[2]).'<br>';
-					if ($row[4]) $p .= date('d.m.Y, H:i:s',$row[4]);
-					$p .= '</td>
-						<td>'.$row[3].' -> '.$row[5].'</td>
-						<td>'.$ext.'</td>
-						<td>'.$row[6].'</td>
-					</tr>';
-
-				} elseif ($row[0] == 'row') {
-					$p = '<tr class="stat_'.$row[1].'">
-						<td>'.$row[1].'</td>
-						<td>'.$row[2].'</td>
-						<td></td>
-						<td>.'.$row[0].'</td>
-						<td>'.$row[3].'</td>
-					</tr>';
-
-				} elseif ($row[0] == 'tbl') {
-					$p = '<tr class="stat_'.$row[1].'">
-						<td>'.$row[1].'</td>
-						<td>'.$row[2].'</td>
-						<td></td>
-						<td>.'.$row[0].'</td>
-						<td>'.$row[3].'</td>
-					</tr>';
-
-				} else {
-					continue;
-				}
-
-				$data[$row[0]][$row[1]] .= $p;
-			}
-			$resp = '<table class="table_compare">'.$data['inf']['dt'].$data['tbl']['crt'].$data['tbl']['rem'].$data['tbl']['chg'].$data['row']['crt'].$data['row']['rem'].$data['row']['chg'].$data['fls']['crt'].$data['fls']['rem'].$data['fls']['chg'].'</table>';
-			return $resp;
-		}
-
-		$statefile = $dir.'/state_etcmpr_'.$uniq;
-		$state = $this->proccess_state($statefile,false,true);
-		if ($state === false) {
-			$this->reqres['errors'][] = array('num'=>'1402');
-			return $res;
-		} elseif ( ! $state) {
-			$state_new = true;
-			$state = array(
-				'step' => array(
-					'frst' => true,
-					'num' => 1,
-					'cnt' => 0,
-				),
-			);
-		}
-
-		$res['state'] = $state;
-		$res['uniq']  = $uniq;
-		$res['dir']   = $dir;
-		
-		$fszhs = array(
-			'rowtp',
-			'cmprres',
-			'nm',
-			'prm1',
-			'prm2',
-			'prm3',
-			'prm4',
-		);
-		$fszhs_inf_dt = array(
-			'inf',
-			'dt',
-			time(),
-			basename($etfile1_db),
-			($etfile2_db ? basename($etfile2_db) : '[current]'),
-			basename($etfile1_lst),
-			($etfile2_lst ? basename($etfile2_lst) : '[current]'),
-		);
-
-		if (file_exists($cmpr_folder.$cmpr_file.'_'.$uniq)) {
-			$this->reqres['errors'][] = array('num'=>'0909');
-			return $res;
-		}
-	
-		$cmpr_file_all_fh = fopen($cmpr_folder.$cmpr_file.$procfile,
-			($state['step']['frst'] ? 'wb' : 'ab')
-		);
-		if ($cmpr_file_all_fh) {
-			if ($state['step']['frst']) {
-				$fres = fputcsv($cmpr_file_all_fh,$fszhs);
-				$fres = fputcsv($cmpr_file_all_fh,$fszhs_inf_dt);
-			}
-		} else {
-			$this->reqres['errors'][] = array('num'=>'0905');
-			return $res;
-		}
-
-		if ($state['step']['frst']) {
-			$state['step']['frst'] = false;
-		}
-
-		if ($state['step']['num'] === 1) {
-			$step_flag = true;
-			$state['step']['cnt']++;
-			
-			if ($etfile1_db) {
-				$fetres = $this->db_etalon_cmpr($etfile1_db, $etfile2_db, $cmpr_file_all_fh);
-		
-				$res['stepres'] = $fetres;
-	
-				if (
-					$fetres['completed'] == 'y'
-					|| $fetres['ok'] != 'y'
-				) $step_next = true;
-			}
-		}
-
-		if ($state['step']['num'] === 2) {
-			$step_flag = true;
-			$state['step']['cnt']++;
-	
-			if ($etfile1_lst) {
-				$fetres = $this->fls_etalon_cmpr($etfile1_lst, $etfile2_lst, $cmpr_file_all_fh);
-		
-				$res['stepres'] = $fetres;
-		
-				if (
-					$fetres['completed'] == 'y'
-					|| $fetres['ok'] != 'y'
-				) $step_next = true;
-				$step_next = true;
-			}
-		}
-
-		if ($step_flag) {
-			if ($step_next) {
-				$res['nextstep'] = true;
-				$state = array(
-					'step' => array(
-						'num' => $state['step']['num']+1,
-						'cnt' => 0,
-					),
-				);
-			}
-			$foores = $this->proccess_state($statefile,$state,true);
-			if ( ! $foores) {
-				$this->reqres['errors'][] = array('num'=>'1003');
-				return $res;
-			}
-		} else {
-			copy(
-				$cmpr_folder.$cmpr_file.$procfile,
-				$cmpr_folder.$cmpr_file.'_'.$uniq
-			);
-			rename(
-				$cmpr_folder.$cmpr_file.$procfile,
-				$cmpr_folder.$cmpr_file.$lastfile
-			);
-
-			$res['completed'] = 'y';
-			$this->proccess_state($statefile,'rem');
-		}
-
-		if ($cmpr_file_all_fh) fclose($cmpr_file_all_fh);
-
-		$res['state'] = $state;
-		$res['ok'] = 'y';
-		return $res;
-	}
-
-	function fls_etalon_cmpr($file1, $file2, $cmprfh) {
-		$res = array(
-			'method' => 'fls_etalon_cmpr',
-			'ok'     => 'n',
-		);
-
-		$uniq = $this->uniq;
-
-		$statefile = $this->conf('etalon_dir').'/state_flsetcmpr_'.$uniq;
-		$state = $this->proccess_state($statefile,false,true);
-		if ($state === false) {
-			$this->reqres['errors'][] = array('num'=>'0101');
-			return $res;
-		} elseif ( ! $state || ! is_array($state)) {
-			$state_new = true;
-			$state = array(
-				'cnt'     => 0,
-				'files'   => 0,
-				'd_queue' => array('/'),
-				'f_queue' => array(),
-			);
-		}
-
-		$state['cnt']++;
-
-		$res['state'] = $state;
-		$res['uniq']  = $uniq;
-
-		$fres = $this->cms();
-
-		$file1_fh = fopen($file1,'rb');
-		$file1_lst = false;
-		if ($file1_fh) {
-			$file1_lst = array();
-			while ($row = fgetcsv($file1_fh,0)) {
-				if (substr($row[3],0,1) != '/') continue;
-				$file1_lst[$row[3]] = $row;
-
-				if ($state['cnt'] !== 1) continue;
-
-				if (file_exists($this->droot.$row[3])) continue;
-				$fszhs = array(
-					'fls',
-					'rem',
-					$row[1],
-					$row[2],
-					'',
-					'',
-					$row[3],
-				);
-				$fres = fputcsv($cmprfh,$fszhs);
-			}
-		} else {
-			$this->reqres['errors'][] = array('num'=>'1405');
-			return $res;
-		}
-
-		$this->max['cntr'][0] = array(
-			'nm'  => 'maxitems',
-			'max' => $this->conf('maxitems'),
-			'cnt' => 0,
-		);
-
-		$ii = 0;
-		while (true) {
-			while (true) {
-				$file = array_shift($state['f_queue']);
-				if ( ! $file) break;
-
-				$ii++;
-				$this->max['cntr'][0]['cnt']++;
-				$state['step']['files']++;
-
-				$size = filesize($this->droot.$file);
-				
-				$prev = $file1_lst && isset($file1_lst[$file])
-					? $file1_lst[$file] : false;
-				$changed = $created = false;
-				if ($prev) {
-					if ($prev[2] == $size) {
-						if ($size <= $this->conf('maxmemory')) {
-							$hash = md5_file($this->droot.$file);
-							if ($prev[0] != $hash) {
-								$changed = true;
-							}
-						}
-					} else $changed = true;
-				} else $created = true;
-				if ($changed || $created) {
-					$fctm = $this->filetime($this->droot.$file);
-					$fszhs = array(
-						'fls',
-						$created ? 'crt' : 'chg',
-						$prev[1],
-						$prev[2],
-						$fctm,
-						$size,
-						$file,
-					);
-					$fres = fputcsv($cmprfh,$fszhs);
-				}
-
-				if ($this->max()) {
-					$flag_max = true;
-					break;
-				}
-				if ($ii % 2000 == 0) sleep(2);
-			}
-			if ($flag_max) break;
-
-			$state['f_queue'] = array();
-			$nextdir = array_shift($state['d_queue']);
-			if ( ! $nextdir) break;
-			if ( ! ($open = opendir($this->droot.$nextdir))) {
-				$this->reqres['errors'][] = array('num'=>'1402');
-				continue;
-			}
-			while ($file = readdir($open)) {
-				if (
-					filetype($this->droot.$nextdir.$file) == 'link'
-					|| $file == '.' || $file == '..'
-					|| $file == '.th'
-				) {
-					continue;
-				}
-				if ($this->cache_dirs && is_array($this->cache_dirs)) {
-					foreach ($this->cache_dirs AS $cdir) {
-						if (strpos($nextdir.$file.'/',$cdir) === 0) continue 2;
-					}
-				}
-				if (is_dir($this->droot.$nextdir.$file)) {
-					$state['d_queue'][] = $nextdir.$file.'/';
-					continue;
-				}
-				if ( ! is_file($this->droot.$nextdir.$file)) {
-					continue;
-				}
-				$state['f_queue'][] = $nextdir.$file;
-			}
-		}
-
-		if ($this->max['flag']) {
-			$res['max'] = true;
-
-			$foores = $this->proccess_state($statefile,$state,true);
-			if ( ! $foores) {
-				$this->reqres['errors'][] = array('num'=>'1403');
-				return $res;
-			}
-
-		} else {
-			$res['completed'] = 'y';
-			$this->proccess_state($statefile,'rem');
-		}
-
-		unset($state['f_queue']);
-		unset($state['d_queue']);
-
-		$res['state'] = $state;
-		$res['ok'] = 'y';
-		return $res;
-	}
-
-	function db_etalon_cmpr($file1, $file2, $cmprfh) {
-		$res = array(
-			'method' => 'db_etalon_cmpr',
-			'ok'     => 'n',
-		);
-
-		$uniq = $this->uniq;
-
-		$maxitems = intval($this->conf('maxitems','db'));
-
-		$statefile = $this->conf('etalon_dir').'/state_dbetcmpr_'.$uniq;
-		$state = $this->proccess_state($statefile,false,true);
-		if ($state === false) {
-			$this->reqres['errors'][] = array('num'=>'0101');
-			return $res;
-		} elseif ( ! $state || ! is_array($state)) {
-			$state_new = true;
-			$state = array(
-				'cnt'    => 0,
-				'step'   => 1,
-				'csvln'  => 0,
-				'limit'  => $maxitems,
-				'tbl'    => false,
-				'offset' => 0,
-				'keys'   => '',
-				'tbls'   => array(),
-			);
-		}
-
-		$state['cnt']++;
-	
-		$res['state'] = $state;
-		$res['uniq']  = $uniq;
-
-		$fres = $this->cms();
-		if ( ! $fres) {
-			$this->reqres['errors'][] = array('num'=>'0102');
-			return $res;
-		}
-		$fres = $this->db_access();
-		if ( ! $fres) {
-			$this->reqres['errors'][] = array('num'=>'0103');
-			return $res;
-		}
-		$dbcres = $this->db_connect();
-		if ($dbcres['ok'] != 'y') return $res;
-
-		if ($state['step'] == 1) {
-			$dbres = $this->db->query("SHOW TABLES");
-			if ( ! $dbres) {
-				$this->reqres['errors'][] = array('num'=>'0104');
-				return $res;
-			}
-			while ($row = $dbres->fetch_row()) {
-				$state['tbls'][$row[0]] = $row[0];
-			}
-		}
-		if ( ! $state['tbls'] || ! is_array($state['tbls'])) {
-			$this->reqres['errors'][] = array('num'=>'1406');
-			return $res;
-		}
-
-		$limit = intval($state['limit']);
-		$this->max['cntr'][0] = array(
-			'nm'  => 'maxitems',
-			'max' => $limit,
-			'cnt' => 0,
-		);
-
-		$file1_fh = fopen($file1,'rb');
-		$file1_lst = false;
-		$ii = 0;
-		if ($file1_fh) {
-			$file1_lst = array();
-			while ($row = fgetcsv($file1_fh,0)) {
-				if ( ! in_array($row[0],array('tbl','row'))) continue;
-
-				if ($state['step'] == 1) {
-					$ii++;
-					if (
-						$state['csvln']
-						&& $ii <= $state['csvln']
-					) continue;
-					$this->max['cntr'][0]['cnt']++;
-
-					if ($state['tbls'][$row[2]]) {
-						if ($row[0] == 'row') {
-							$q_keys = str_replace("',`","' AND `",$row[3]);
-
-							$dbres2 = $this->db->query("SELECT * FROM `{$row[2]}` WHERE {$q_keys} LIMIT 1");
-							if ( ! $dbres2) {
-								$this->reqres['errors'][] = array('num'=>'0113');
-								continue;
-							}
-							if ( ! $dbres2->num_rows) {
-								$fszhs = array(
-									'row',
-									'rem',
-									$row[2],
-									$row[3],
-									'',
-									'',
-									'',
-								);
-								$fres = fputcsv($cmprfh,$fszhs);
-							}
-						}
-
-					} else {
-						if ($row[0] == 'tbl') {
-							$fszhs = array(
-								'tbl',
-								'rem',
-								$row[2],
-								'',
-								'',
-								'',
-								'',
-							);
-							$fres = fputcsv($cmprfh,$fszhs);
-
-						} elseif ($row[0] == 'row') {
-							$fszhs = array(
-								'row',
-								'rem',
-								$row[2],
-								$row[3],
-								'',
-								'',
-								'',
-							);
-							$fres = fputcsv($cmprfh,$fszhs);
-						}
-					}
-
-					if ($this->max()) {
-						$flag_max = true;
-						break;
-					}
-
-					continue;
-				}
-
-				if ( ! $state['tbls'][$row[2]]) continue;
-
-				$file1_lst[$row[2]]['nm'] = $row[2];
-				if ($row[0] == 'tbl') {
-					$file1_lst[$row[2]]['cols'] = $row[4];
-					$file1_lst[$row[2]]['keys'] = $row[3];
-					$file1_lst[$row[2]]['hsh'] = $row[1];
-
-				} elseif ($row[0] == 'row') {
-					$file1_lst[$row[2]]['rows'][$row[3]] = $row[1];
-				}
-			}
-		} else {
-			$this->reqres['errors'][] = array('num'=>'1405');
-			return $res;
-		}
-		
-		if ($state['step'] == 1) {
-			if ($this->max['flag']) {
-				$state['csvln'] = $ii;
-			} else {
-				$state['csvln'] = 0;
-			}
-
-		} else {
-			$ii = 0;
-			foreach ($state['tbls'] AS $tbl) {
-
-				if (
-					$state['tbl']
-					&& $tbl != $state['tbl']
-				) continue;
-				$ii_tbl = $tbl;
-				$state['tbl'] = false;
-
-				if ( ! $state['offset']) {
-					$dbres2 = $this->db->query("SELECT *
-						FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
-						WHERE TABLE_NAME=N'{$tbl}'
-						ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
-					if ( ! $dbres2) {
-						$this->reqres['errors'][] = array('num'=>'0112');
-						continue;
-					}
-					$keys = "";
-					$keys_nm = false;
-					$keys_ar = array();
-					while ($row2 = $dbres2->fetch_assoc()) {
-						if (
-							$keys_nm
-							&& $keys_nm !== $row2['CONSTRAINT_NAME']
-						) break;
-						$keys_nm = $row2['CONSTRAINT_NAME'];
-						$keys .= ($keys?",":"")."`".$row2['COLUMN_NAME']."`";
-						$keys_ar[$row2['COLUMN_NAME']] = $row2['COLUMN_NAME'];
-					}
-					$state['keys'] = $keys;
-					$state['keys_ar'] = $keys_ar;
-		
-					$dbres2 = $this->db->query("SHOW CREATE TABLE `{$tbl}`");
-					if ( ! $dbres2) {
-						$this->reqres['errors'][] = array('num'=>'0105');
-						continue;
-					}
-					$row2 = $dbres2->fetch_row();
-					$tblhash = md5($row2[1]);
-
-					if (
-						! isset($file1_lst[$tbl])
-						|| ! $file1_lst[$tbl]['nm']
-					) {
-						$fszhs = array(
-							'tbl',
-							'crt',
-							$tbl,
-							'',
-							'',
-							'',
-							'',
-						);
-						$fres = fputcsv($cmprfh,$fszhs);
-
-					} elseif (
-						$tblhash != $file1_lst[$tbl]['hsh']
-						|| $keys != $file1_lst[$tbl]['keys']
-					) {
-						$fszhs = array(
-							'tbl',
-							'chg',
-							$tbl,
-							'',
-							'',
-							'',
-							'',
-						);
-						$fres = fputcsv($cmprfh,$fszhs);
-					}
-				}
-
-				$q = "SELECT * FROM `{$tbl}`";
-				if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
-				$q .= " LIMIT ".($limit+10)." OFFSET ".$state['offset'];
-		
-				$foomem1 = memory_get_peak_usage(true);
-
-				$dbres2 = $this->db->query($q);
-				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0106');
-					break;
-				}
-
-				$foomem2 = memory_get_peak_usage(true);
-				$foomem_otn1 = $this->conf('maxmemory') / ($foomem2 > $foomem1 ? ($foomem2-$foomem1) : 1);
-				$foomem_otn2 = $this->conf('maxmemory') / $foomem2;
-	
-				if ($foomem_otn1 < 1) {
-					$limit = $limit * ($foomem_otn1/2);
-				} elseif ($foomem_otn1 < 2) {
-					$limit = $limit * 0.5;
-				} elseif ($foomem_otn1 > 10 && $foomem_otn2 > 10) {
-					$limit = $limit * 1.5;
-				}
-				$limit = intval($limit);
-				if ( ! $limit || $limit > $maxitems) {
-					$limit = $maxitems;
-				}
-				$state['limit'] = $limit;
-		
-				$ii = 0;
-				while ($row2 = $dbres2->fetch_assoc()) {
-					$ii++;
-					$this->max['cntr'][0]['cnt']++;
-		
-					$dbrow = "";
-					$dbrow_keys = "";
-					foreach ($row2 AS $key => $val) {
-						$val = $this->db->real_escape_string($val);
-						$dbrow .= ($dbrow?",":"")."`{$key}`='{$val}'";
-		
-						if ($state['keys_ar'][$key]) {
-							$dbrow_keys .= ($dbrow_keys?",":"")."`{$key}`='{$val}'";
-						}
-					}
-					$dbrow_hash = md5($dbrow);
-
-					if (
-						! isset($file1_lst[$tbl])
-						|| ! $file1_lst[$tbl]['nm']
-						|| ! isset($file1_lst[$tbl]['rows'][$dbrow_keys])
-						|| ! $file1_lst[$tbl]['rows'][$dbrow_keys]
-					) {
-						$fszhs = array(
-							'row',
-							'crt',
-							$tbl,
-							$dbrow_keys,
-							'',
-							'',
-							'',
-						);
-						$fres = fputcsv($cmprfh,$fszhs);
-
-					} elseif ($dbrow_hash != $file1_lst[$tbl]['rows'][$dbrow_keys]) {
-						$fszhs = array(
-							'row',
-							'chg',
-							$tbl,
-							$dbrow_keys,
-							'',
-							'',
-							'',
-						);
-						$fres = fputcsv($cmprfh,$fszhs);
-					}
-		
-					if ($this->max()) {
-						$flag_max = true;
-						break;
-					}
-				}
-
-				if ( ! $this->max['flag']) {
-					$state['offset'] = 0;
-					$state['keys'] = '';
-				}
-		
-				if ($this->max()) {
-					$flag_max = true;
-				}
-				if ($flag_max) break;
-			}
-
-			$state['tbl'] = $ii_tbl;
-			$state['offset'] += $ii;
-		}
-
-		if ($this->max['flag'] || $state['step'] == 1) {
-			if ($this->max['flag']) {
-				$res['max'] = true;
-			} else {
-				$state['step']++;
-			}
-
-			$foores = $this->proccess_state($statefile,$state,true);
-			if ( ! $foores) {
-				$this->reqres['errors'][] = array('num'=>'0109');
-				return $res;
-			}
-
-		} else {
-			$res['completed'] = 'y';
-			$this->proccess_state($statefile,'rem');
-		}
-
-		$res['state'] = $state;
-		$res['ok'] = 'y';
+		$this->actfile['states'][$method] = $state;
+		$this->reqres['mres'][] = $res;
 		return $res;
 	}
 
@@ -2250,10 +1459,13 @@ class BURAN
 		return $dirs.$fls;
 	}
 
-	function fls_structure($path='/') {
+	function fls_structure($path='/')
+	{
+		$method = 'fls_structure';
 		$res = array(
-			'method' => 'fls_structure',
-			'ok'     => 'n',
+			'method' => $method,
+			'parent_mthd' => $this->parent_mthd,
+			'ok' => 'n',
 		);
 
 		if ( ! $path) $path = '/';
@@ -2389,7 +1601,7 @@ class BURAN
 
 		if ( ! $this->uniq) {
 			srand(time());
-			$uniq_new = 'bckp-'.date('Y-m-d-H-i-s').'-'.substr(md5($this->usrip.'-'.time().'-'.rand(0,9)),-6);
+			$uniq_new = 'bckp_'.date('Y-m-d_H-i-s').'_'.substr(md5($this->usrip.'-'.time().'-'.rand(0,9)),-6);
 			$res .= '<div>
 				<a href="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$uniq_new.'">Новая резервная копия</a>
 			</div>';
@@ -2428,6 +1640,40 @@ class BURAN
 	function page_etalon()
 	{
 		$res .= '<h1>Эталоны</h1>';
+
+		if ( ! $this->uniq) {
+			srand(time());
+			$uniq_new = 'etln_'.date('Y-m-d_H-i-s').'_'.substr(md5($this->usrip.'-'.time().'-'.rand(0,9)),-6);
+			$res .= '<div>
+				<a href="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$uniq_new.'">Новый эталон</a>
+			</div>';
+			$this->reqres['pntres'] .= $res;
+			return true;
+		}
+		
+		$res .= '<div style="color:#666;margin-bottom:50px;">'.$this->uniq.'</div>';
+
+		$res .= '<div class="actform_res"></div>';
+
+		$res .= '<div>Инфа об эталоне</div>';
+
+		if ( ! $this->actfile) {
+			$actfile = array(
+				'uniq' => $this->uniq,
+				'dt' => time(),
+			);
+			$this->bufile('acts', 'set', $this->uniq, $actfile);
+			$this->actfile = $actfile;
+		}
+
+		if ($actfile['completed']) {
+			$res .= '<div>Завершено!</div>';
+		} else {
+			$res .= '<form class="actform" action="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$this->uniq.'&do" method="get">
+				<button class="sbmt" type="button">Запустить</button>
+			</form>';
+		}
+		$res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
 		
 		$this->reqres['pntres'] .= $res;
 		return true;
@@ -2478,6 +1724,8 @@ class BURAN
 			$reqres = json_encode($this->reqres);
 			header('Content-Type: application/json; charset=utf-8');
 		}
+
+		$this->bufile('globinfo', 'set', false, $this->globinfo);
 
 		return $reqres;
 	}
@@ -2978,7 +2226,7 @@ TPL;
 				break;
 
 			case 'acts':
-				$filedir = substr($prm,0,strpos($prm,'-'));
+				$filedir = substr($prm,0,strpos($prm,'_'));
 				$filedir = preg_replace("/[^a-z0-9]/",'',$filedir);
 				if ($filedir) $filedir .= '/';
 				$subfolder = '/acts/'.$filedir;
@@ -2986,6 +2234,13 @@ TPL;
 				$base64_e = true;
 				$exitline = true;
 				$file = $prm.'.php';
+				break;
+
+			case 'globinfo':
+				$serialize = true;
+				$base64_e = true;
+				$exitline = true;
+				$file = $type.'.php';
 				break;
 
 			default:
