@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('4.0-beta-2');
+$bu = new BURAN('4.0-beta-3');
 
 $mres = $bu->auth($_GET['w']);
 if ($mres['ok'] !== 'y') exit();
@@ -330,7 +330,7 @@ class BURAN
 		);
 
 		if ($this->globinfo['methods'][$method]['files']) {
-			$res['lastact']['files'] = $this->globinfo['methods'][$method]['files'];
+			$res['prgrsbr']['max'] = $this->globinfo['methods'][$method]['files'];
 		}
 
 		if ( ! $this->actfile) {
@@ -496,6 +496,7 @@ class BURAN
 		}
 
 		$state['part'] = $part;
+		$res['prgrsbr']['curr'] = $state['files'];
 
 		$res['ok'] = 'y';
 		$this->actfile['states'][$method] = $state;
@@ -513,6 +514,10 @@ class BURAN
 			'printres' => 'y',
 			'mthd_nm' => 'Дамп базы данных',
 		);
+
+		if ($this->globinfo['methods'][$method]['itms']) {
+			$res['prgrsbr']['max'] = $this->globinfo['methods'][$method]['itms'];
+		}
 
 		if ( ! $this->actfile) {
 			$this->reqres['errors'][] = array('num'=>'0802');
@@ -532,6 +537,7 @@ class BURAN
 				'keys'   => '',
 				'part' => 1,
 				'lastpartsize' => 0,
+				'itms' => 0,
 			);
 		}
 
@@ -672,6 +678,7 @@ class BURAN
 			while ($row2 = $dbres2->fetch_assoc()) {
 				$ii++;
 				$this->max['cntr'][0]['cnt']++;
+				$state['itms']++;
 
 				$dump .= "INSERT INTO `{$row[0]}` SET ";
 
@@ -744,7 +751,11 @@ class BURAN
 			$res['max'] = true;
 		} else {
 			$res['completed'] = 'y';
+
+			$this->globinfo['methods'][$method]['itms'] = $state['itms'];
 		}
+
+		$res['prgrsbr']['curr'] = $state['itms'];
 
 		$res['ok'] = 'y';
 		$this->actfile['states'][$method] = $state;
