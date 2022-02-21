@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('4.0-beta-1');
+$bu = new BURAN('4.0-beta-2');
 
 $mres = $bu->auth($_GET['w']);
 if ($mres['ok'] !== 'y') exit();
@@ -64,35 +64,6 @@ if ('phpinfo' == $bu->act) {
 	$bu->res['data'] = $bu->getphpinfo();
 }
 
-if ('db_dump' == $bu->act) {
-	$mres = $bu->db_dump();
-	$bu->res['mres'][] = $mres;
-}
-
-if ('fls_archive' == $bu->act) {
-	$mres = $bu->fls_archive();
-	$bu->res['mres'][] = $mres;
-}
-
-if ('etalon_update' == $bu->act) {
-	$mres = $bu->etalon_update();
-	$bu->res['mres'][] = $mres;
-}
-if ('etalon_compare' == $bu->act) {
-	$file1 = $_GET['file'];
-	$file2 = $_GET['file2'];
-	$getlist = $_GET['getlist']=='y' ? true : false;
-	$cmprres = $_GET['cmprres']=='y' ? true : false;
-	$go = $_GET['go']=='y' ? true : false;
-	$mres = $bu->etalon_compare($file1,$file2,$getlist,$cmprres,$go);
-	if ($go) {
-		$bu->res_ctp = 'html';
-		$bu->res['data'] = $mres;
-	} else {
-		$bu->res['mres'][] = $mres;
-	}
-}
-
 if ('fls_remove' == $bu->act) {
 	$path = $_GET['path'];
 	$mres = $bu->fls_remove($path);
@@ -122,7 +93,7 @@ class BURAN
 		'def' => array(
 			'debug' => 0,
 
-			'maxtime'     => 4,
+			'maxtime'     => 25,
 			'maxmemory'   => 109715200, //1024*1024*200
 			'maxitems'    => 15000,
 
@@ -354,7 +325,13 @@ class BURAN
 			'method' => $method,
 			'parent_mthd' => $this->parent_mthd,
 			'ok' => 'n',
+			'printres' => 'y',
+			'mthd_nm' => 'Архивация файлов',
 		);
+
+		if ($this->globinfo['methods'][$method]['files']) {
+			$res['lastact']['files'] = $this->globinfo['methods'][$method]['files'];
+		}
 
 		if ( ! $this->actfile) {
 			$this->reqres['errors'][] = array('num'=>'0802');
@@ -514,6 +491,8 @@ class BURAN
 			$res['max'] = true;
 		} else {
 			$res['completed'] = 'y';
+
+			$this->globinfo['methods'][$method]['files'] = $state['files'];
 		}
 
 		$state['part'] = $part;
@@ -531,6 +510,8 @@ class BURAN
 			'method' => $method,
 			'parent_mthd' => $this->parent_mthd,
 			'ok' => 'n',
+			'printres' => 'y',
+			'mthd_nm' => 'Дамп базы данных',
 		);
 
 		if ( ! $this->actfile) {
@@ -778,6 +759,8 @@ class BURAN
 			'method' => $method,
 			'parent_mthd' => $this->parent_mthd,
 			'ok' => 'n',
+			'printres' => 'y',
+			'mthd_nm' => 'Эталон файлов',
 		);
 
 		if ( ! $this->actfile) {
@@ -989,6 +972,8 @@ class BURAN
 			'method' => $method,
 			'parent_mthd' => $this->parent_mthd,
 			'ok' => 'n',
+			'printres' => 'y',
+			'mthd_nm' => 'Эталон базы данных',
 		);
 
 		if ( ! $this->actfile) {
@@ -1631,7 +1616,7 @@ class BURAN
 				<button class="sbmt" type="button">Запустить</button>
 			</form>';
 		}
-		$res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
+		// $res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
 		
 		$this->reqres['pntres'] .= $res;
 		return true;
@@ -1673,7 +1658,7 @@ class BURAN
 				<button class="sbmt" type="button">Запустить</button>
 			</form>';
 		}
-		$res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
+		// $res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
 		
 		$this->reqres['pntres'] .= $res;
 		return true;
