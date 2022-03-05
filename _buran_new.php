@@ -103,7 +103,7 @@ class BURAN
 			// 'files_backup_maxpartsize' => 209715200, //1024*1024*200
 			'files_backup_maxpartsize' => 50715200, //1024*1024*200
 
-			'etalon_ext' => '/.php/.htaccess/.html/.htm/.js/.inc/.css/.sass/.scss/.less/.tpl/.twig/.ini/',
+			'etalon_ext' => '/.php/.htaccess/.html/.htm/.js/.inc/.css/.sass/.scss/.less/.tpl/.twig/.ini/.json/',
 
 			'fls_archive_without_ext' => '', // '/.jpg/.jpeg/.png/',
 			'fls_archive_without_dir' => array(
