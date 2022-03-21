@@ -2263,6 +2263,28 @@ class BURAN
 			}
 
 		} else {
+
+			foreach ($state['structure'] AS $pdir => $row) {
+				$eds = array('б','Кб','Мб','Гб','Тб');
+				$v = $row['fss'];
+				$e = 0;
+				while ($v > 1024) {
+					$e++;
+					$v = $v/1024;
+				}
+				$v = round($v,1);
+				$state['structure'][$pdir]['fss_f'] = $v.' '.$eds[$e];
+			}
+
+			uasort($state['structure'], function($a, $b) {
+				if ($a['fss'] > $b['fss']) return -1;
+				elseif ($a['fss'] < $b['fss']) return 1;
+				else {
+					if ($a['cnt'] > $b['cnt']) return -1;
+					else return 1;
+				}
+			});
+			
 			$res['completed'] = 'y';
 			$this->proccess_state($statefile,'rem');
 		}
