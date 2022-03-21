@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('4.0-beta-3');
+$bu = new BURAN('4.0-beta-4');
 
 $mres = $bu->auth($_GET['w']);
 if ($mres['ok'] !== 'y') exit();
