@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('4.0-beta-4');
+$bu = new BURAN('4.0-beta-5');
 
 $mres = $bu->auth($_GET['w']);
 if ($mres['ok'] !== 'y') exit();
@@ -349,12 +349,6 @@ class BURAN
 		$minfo['mres']['ok'] = 'n';
 		$minfo['mres']['er_cnt']++;
 
-		if ( ! $this->actfile) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'01');
-			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
-		}
-
 		if ($this->globinfo['methods'][$method]['files']) {
 			$minfo['prgrsbr']['max'] = $this->globinfo['methods'][$method]['files'];
 		}
@@ -396,9 +390,6 @@ class BURAN
 			$this->actfile['methods'][$method] = $minfo;
 			return $minfo['res'];
 		}
-
-		$res['archfile'] = $archfile;
-		$res['archfilepart'] = $archfilepart;
 
 		$this->max['cntr'][0] = array(
 			'nm'  => 'maxitems',
@@ -541,12 +532,6 @@ class BURAN
 		$minfo['res']['ok'] = 'n';
 		$minfo['res']['er_cnt']++;
 
-		if ( ! $this->actfile) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'01');
-			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
-		}
-
 		if ($this->globinfo['methods'][$method]['itms']) {
 			$minfo['prgrsbr']['max'] = $this->globinfo['methods'][$method]['itms'];
 		}
@@ -554,7 +539,6 @@ class BURAN
 		$dir = $this->conf('backup_dir').'/'.$this->uniq.'/db/';
 		$folder = $this->droot.$this->mdir.$dir;
 		if ( ! file_exists($folder)) mkdir($folder,0755,true);
-		$res['dir'] = $dir;
 
 		$part = $minfo['state']['part'];
 
@@ -567,9 +551,6 @@ class BURAN
 			$this->actfile['methods'][$method] = $minfo;
 			return $minfo['res'];
 		}
-
-		$res['dumpfile'] = $dumpfile;
-		$res['dumpfilepart'] = $dumpfilepart;
 
 		$fres = $this->cms();
 		if ( ! $fres) {
@@ -585,13 +566,14 @@ class BURAN
 		}
 		$dbcres = $this->db_connect();
 		if ($dbcres['ok'] != 'y') {
-			$this->reqres['mres'][] = $res;
+			$minfo['res']['errors'][] = array('num'=>$errnum.'05');
+			$this->actfile['methods'][$method] = $minfo;
 			return $minfo['res'];
 		}
 
 		$dbres = $this->db->query("SHOW TABLES");
 		if ( ! $dbres) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'05');
+			$minfo['res']['errors'][] = array('num'=>$errnum.'06');
 			$this->actfile['methods'][$method] = $minfo;
 			return $minfo['res'];
 		}
@@ -726,14 +708,14 @@ class BURAN
 		$procfile = '_process';
 		$fh = fopen($folder.$dumpfilepart.$procfile,($minfo_new?'wb':'ab'));
 		if ( ! $fh) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'06');
+			$minfo['res']['errors'][] = array('num'=>$errnum.'07');
 			$this->actfile['methods'][$method] = $minfo;
 			return $minfo['res'];
 		}
 		$fwres = fwrite($fh,$dump);
 		fclose($fh);
 		if ( ! $fwres) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'07');
+			$minfo['res']['errors'][] = array('num'=>$errnum.'08');
 			$this->actfile['methods'][$method] = $minfo;
 			return $minfo['res'];
 		}
@@ -744,29 +726,28 @@ class BURAN
 			! $this->max['flag']
 			|| $partsize > $maxpartsize
 		) {
-			$minfo['state']['part']++;
+			$part++;
 
 			$foores = rename(
 				$folder.$dumpfilepart.$procfile,
 				$folder.$dumpfilepart
 			);
 			if ( ! $foores) {
-				$minfo['res']['errors'][] = array('num'=>$errnum.'08');
+				$minfo['res']['errors'][] = array('num'=>$errnum.'09');
 				$this->actfile['methods'][$method] = $minfo;
 				return $minfo['res'];
 			}
 		}
 
 		if ($this->max['flag']) {
-			$res['max'] = true;
 		} else {
-			$res['completed'] = 'y';
 			$minfo['res']['completed'] = 'y';
 
 			$this->globinfo['methods'][$method]['itms'] = $minfo['state']['itms'];
 		}
 
-		$res['prgrsbr']['curr'] = $minfo['state']['itms'];
+		$minfo['state']['part'] = $part;
+		$minfo['prgrsbr']['curr'] = $minfo['state']['itms'];
 
 		$minfo['res']['ok'] = 'y';
 		$minfo['res']['er_cnt'] = 0;
@@ -1682,29 +1663,33 @@ class BURAN
 
 	function ob_end($data)
 	{
+		$errnum = '99';
+
 		if ($this->conf('debug')) return false;
 
-		if ( ! is_array($this->reqres)) $this->reqres = array();
-		$this->reqres['uniq'] = $this->uniq;
-		$this->reqres['tm'] = time();
-		$this->reqres['ok'] = 'y';
-
-		if (is_array($this->reqres['mres'])) {
-			foreach ($this->reqres['mres'] AS $mres) {
-				$this->actfile['mres'][] = $mres;
-
-				if ($mres['ok'] != 'y') {
-					$this->reqres['ok'] = 'n';
+		if ( ! $this->actfile || ! is_array($this->actfile)) {
+			$this->actfile = array();
+		}
+		$this->actfile['res']['ok'] = 'y';
+		$this->actfile['res']['completed'] = 'y';
+		$this->actfile['res']['mres'] = array();
+		if (is_array($this->actfile['methods'])) {
+			foreach ($this->actfile['methods'] AS $minfo) {
+				$this->actfile['res']['mres'][] = $minfo;
+				if ($mres['res']['ok'] != 'y') {
+					$this->actfile['res']['ok'] = 'n';
+				}
+				if ($mres['res']['completed'] != 'y') {
+					$this->actfile['res']['completed'] = 'n';
 				}
 			}
 		}
 
-		if ($this->actfile) {
-			$res = $this->bufile('acts', 'set', $this->uniq, $this->actfile);
-			if ( ! $res) {
-				$this->reqres['errors'][] = array('num'=>'1401');
-				$this->reqres['ok'] = 'n';
-			}
+		$this->actfile['res']['tm'] = time();
+		$res = $this->bufile('acts', 'set', $this->uniq, $this->actfile);
+		if ( ! $res) {
+			$this->actfile['res']['errors'][] = array('num'=>$errnum.'01');
+			$this->actfile['res']['ok'] = 'n';
 		}
 
 		$reqres = '';
@@ -1722,7 +1707,7 @@ class BURAN
 			}
 
 		} else {
-			$reqres = json_encode($this->reqres);
+			$reqres = json_encode($this->actfile['res']);
 			header('Content-Type: application/json; charset=utf-8');
 		}
 

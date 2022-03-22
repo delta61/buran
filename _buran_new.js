@@ -50,7 +50,7 @@
 				if (resdata.mres) {
 					resdata.mres.forEach(function(row){
 	
-						if (row.completed == 'y') {
+						if (row.res.completed == 'y') {
 							var compl = 'Завершено!';
 						} else {
 							var compl = 'В процессе ...';
@@ -58,7 +58,7 @@
 							resdata.nextstep = true;
 						}
 	
-						var mresok = row.ok == 'y' ? '' : 'ошибка';
+						var mresok = row.res.ok == 'y' ? '' : 'ошибка';
 	
 						proc = 0;
 						if (row.prgrsbr && row.prgrsbr.max && row.prgrsbr.max > 0) {
@@ -78,7 +78,7 @@
 					});
 				}
 	
-				if (resdata.errors) {
+				if (resdata.res.errors) {
 					log.prepend('<div class="row"><div class="errstit"><span>Ошибки</span><span></span></div></div>');
 					resdata.errors.forEach(function(er){
 						log.prepend('<div class="row"><div class="erritm"><span></span><span>'+er.num+'</span></div></div>');
