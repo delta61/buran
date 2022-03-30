@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('4.0-beta-5');
+$bu = new BURAN('4.0-beta-6');
 
 $mres = $bu->auth($_GET['w']);
 if ($mres['ok'] !== 'y') exit();
@@ -263,18 +263,19 @@ class BURAN
 				'mthd_nm' => 'Резервное копирование',
 				'method' => $method,
 				'state' => array(
+					'failact_cnt' => 0,
 					'step' => array(
 						'num' => 1,
 					),
 				),
-				'res' => array(
-					'ok' => 'n',
-					'er_cnt' => 0,
-				),
 			);
 		}
-		$minfo['res']['ok'] = 'n';
-		$minfo['res']['er_cnt']++;
+		$minfo['state']['failact_cnt']++;
+		$minfo['res'] = array(
+			'ok' => 'n',
+			'errors' => array(),
+			'notice' => array(),
+		);
 
 		if ($minfo['state']['step']['num'] === 1) {
 			$step_flag = true;
@@ -284,8 +285,8 @@ class BURAN
 			if (
 				$subres['completed'] == 'y'
 				|| (
-					$subres['ok'] != 'y'
-					&& $subres['er_cnt'] >= 3
+					$subres['res']['ok'] != 'y'
+					&& $subres['state']['failact_cnt'] >= 3
 				)
 			) $nextstep = true;
 		}
@@ -298,8 +299,8 @@ class BURAN
 			if (
 				$subres['completed'] == 'y'
 				|| (
-					$subres['ok'] != 'y'
-					&& $subres['er_cnt'] >= 3
+					$subres['res']['ok'] != 'y'
+					&& $subres['state']['failact_cnt'] >= 3
 				)
 			) $nextstep = true;
 		}
@@ -309,14 +310,13 @@ class BURAN
 				$minfo['state']['step']['num']++;
 			}
 		} else {
-			$minfo['res']['completed'] = 'y';
+			$minfo['completed'] = 'y';
 		}
 
 		$minfo['res']['ok'] = 'y';
-		$minfo['res']['er_cnt'] = 0;
+		$minfo['state']['failact_cnt'] = 0;
 		$this->actfile['methods'][$method] = $minfo;
-		// $this->reqres['mres'][] = $minfo['res'];
-		return $minfo['res'];
+		return $minfo;
 	}
 
 	function fls_archive()
@@ -335,19 +335,20 @@ class BURAN
 					'curr' => 0,
 				),
 				'state' => array(
+					'failact_cnt' => 0,
 					'd_queue' => array('/'),
 					'f_queue' => array(),
 					'part' => 0,
 					'files' => 0,
 				),
-				'res' => array(
-					'ok' => 'n',
-					'er_cnt' => 0,
-				),
 			);
 		}
-		$minfo['mres']['ok'] = 'n';
-		$minfo['mres']['er_cnt']++;
+		$minfo['state']['failact_cnt']++;
+		$minfo['res'] = array(
+			'ok' => 'n',
+			'errors' => array(),
+			'notice' => array(),
+		);
 
 		if ($this->globinfo['methods'][$method]['files']) {
 			$minfo['prgrsbr']['max'] = $this->globinfo['methods'][$method]['files'];
@@ -366,9 +367,9 @@ class BURAN
 		if ($this->zip) {
 			$archfilepart .= '.zip';
 			if (file_exists($folder.$archfilepart)) {
-				$minfo['res']['errors'][] = array('num'=>$errnum.'02');
+				$minfo['res']['notice'][] = array('num'=>$errnum.'02');
 				$this->actfile['methods'][$method] = $minfo;
-				return $minfo['res'];
+				return $minfo;
 			}
 			$this->zip->open($folder.$archfilepart,ZipArchive::CREATE);
 			$this->zipfile = $folder.$archfilepart;
@@ -377,9 +378,9 @@ class BURAN
 			$archfilepart .= '.tar';
 			if ($this->targzisavailable) $archfilepart .= '.gz';
 			if (file_exists($folder.$archfilepart)) {
-				$minfo['res']['errors'][] = array('num'=>$errnum.'03');
+				$minfo['res']['notice'][] = array('num'=>$errnum.'03');
 				$this->actfile['methods'][$method] = $minfo;
-				return $minfo['res'];
+				return $minfo;
 			}
 			$tarres = $this->tarOpen($folder.$archfilepart);
 			if ( ! $tarres) $this->tar = false;
@@ -388,7 +389,7 @@ class BURAN
 		if ( ! $this->zip && ! $this->tar) {
 			$minfo['res']['errors'][] = array('num'=>$errnum.'04');
 			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			return $minfo;
 		}
 
 		$this->max['cntr'][0] = array(
@@ -451,7 +452,7 @@ class BURAN
 			$nextdir = array_shift($minfo['state']['d_queue']);
 			if ( ! $nextdir) break;
 			if ( ! ($open = opendir($this->droot.$nextdir))) {
-				$this->reqres['errors'][] = array('num'=>'0802');
+				$minfo['res']['errors'][] = array('num'=>$errnum.'05');
 				continue;
 			}
 			while ($file = readdir($open)) {
@@ -487,7 +488,7 @@ class BURAN
 
 		if ($this->max['flag']) {
 		} else {
-			$minfo['res']['completed'] = 'y';
+			$minfo['completed'] = 'y';
 
 			$this->globinfo['methods'][$method]['files'] = $minfo['state']['files'];
 		}
@@ -496,9 +497,9 @@ class BURAN
 		$minfo['prgrsbr']['curr'] = $minfo['state']['files'];
 
 		$minfo['res']['ok'] = 'y';
-		$minfo['res']['er_cnt'] = 0;
+		$minfo['state']['failact_cnt'] = 0;
 		$this->actfile['methods'][$method] = $minfo;
-		return $minfo['res'];
+		return $minfo;
 	}
 
 	function db_dump()
@@ -515,6 +516,7 @@ class BURAN
 				'mthd_nm' => 'Дамп базы данных',
 				'method' => $method,
 				'state' => array(
+					'failact_cnt' => 0,
 					'tbl'    => false,
 					'limit'  => $maxitems,
 					'offset' => 0,
@@ -523,14 +525,14 @@ class BURAN
 					'lastpartsize' => 0,
 					'itms' => 0,
 				),
-				'res' => array(
-					'ok' => 'n',
-					'er_cnt' => 0,
-				),
 			);
 		}
-		$minfo['res']['ok'] = 'n';
-		$minfo['res']['er_cnt']++;
+		$minfo['state']['failact_cnt']++;
+		$minfo['res'] = array(
+			'ok' => 'n',
+			'errors' => array(),
+			'notice' => array(),
+		);
 
 		if ($this->globinfo['methods'][$method]['itms']) {
 			$minfo['prgrsbr']['max'] = $this->globinfo['methods'][$method]['itms'];
@@ -547,35 +549,35 @@ class BURAN
 		$dumpfilepart .= '.sql';
 
 		if (file_exists($folder.$dumpfilepart)) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'02');
-			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			// $minfo['res']['notice'][] = array('num'=>$errnum.'02');
+			// $this->actfile['methods'][$method] = $minfo;
+			// return $minfo;
 		}
 
 		$fres = $this->cms();
 		if ( ! $fres) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'03');
+			$minfo['res']['notice'][] = array('num'=>$errnum.'03');
 			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			return $minfo;
 		}
 		$fres = $this->db_access();
 		if ( ! $fres) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'04');
+			$minfo['res']['notice'][] = array('num'=>$errnum.'04');
 			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			return $minfo;
 		}
 		$dbcres = $this->db_connect();
 		if ($dbcres['ok'] != 'y') {
 			$minfo['res']['errors'][] = array('num'=>$errnum.'05');
 			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			return $minfo;
 		}
 
 		$dbres = $this->db->query("SHOW TABLES");
 		if ( ! $dbres) {
 			$minfo['res']['errors'][] = array('num'=>$errnum.'06');
 			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			return $minfo;
 		}
 
 		$limit = intval($minfo['state']['limit']);
@@ -603,7 +605,7 @@ class BURAN
 					WHERE TABLE_NAME=N'{$row[0]}'
 					ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0112');
+					$minfo['res']['errors'][] = array('num'=>$errnum.'07');
 					continue;
 				}
 				$keys = "";
@@ -620,7 +622,7 @@ class BURAN
 
 				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$row[0]}`");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0105');
+					$minfo['res']['errors'][] = array('num'=>$errnum.'08');
 					continue;
 				}
 
@@ -645,7 +647,7 @@ class BURAN
 
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
-				$this->reqres['errors'][] = array('num'=>'0106');
+				$minfo['res']['errors'][] = array('num'=>$errnum.'09');
 				break;
 			}
 
@@ -708,16 +710,16 @@ class BURAN
 		$procfile = '_process';
 		$fh = fopen($folder.$dumpfilepart.$procfile,($minfo_new?'wb':'ab'));
 		if ( ! $fh) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'07');
+			$minfo['res']['errors'][] = array('num'=>$errnum.'10');
 			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			return $minfo;
 		}
 		$fwres = fwrite($fh,$dump);
 		fclose($fh);
 		if ( ! $fwres) {
-			$minfo['res']['errors'][] = array('num'=>$errnum.'08');
+			$minfo['res']['errors'][] = array('num'=>$errnum.'11');
 			$this->actfile['methods'][$method] = $minfo;
-			return $minfo['res'];
+			return $minfo;
 		}
 
 		$maxpartsize = intval($this->conf('db_dump_maxpartsize'));
@@ -733,15 +735,15 @@ class BURAN
 				$folder.$dumpfilepart
 			);
 			if ( ! $foores) {
-				$minfo['res']['errors'][] = array('num'=>$errnum.'09');
+				$minfo['res']['errors'][] = array('num'=>$errnum.'12');
 				$this->actfile['methods'][$method] = $minfo;
-				return $minfo['res'];
+				return $minfo;
 			}
 		}
 
 		if ($this->max['flag']) {
 		} else {
-			$minfo['res']['completed'] = 'y';
+			$minfo['completed'] = 'y';
 
 			$this->globinfo['methods'][$method]['itms'] = $minfo['state']['itms'];
 		}
@@ -750,9 +752,9 @@ class BURAN
 		$minfo['prgrsbr']['curr'] = $minfo['state']['itms'];
 
 		$minfo['res']['ok'] = 'y';
-		$minfo['res']['er_cnt'] = 0;
+		$minfo['state']['failact_cnt'] = 0;
 		$this->actfile['methods'][$method] = $minfo;
-		return $minfo['res'];
+		return $minfo;
 	}
 
 	function fls_etalon()
@@ -1575,49 +1577,6 @@ class BURAN
 		return true;
 	}
 
-	function page_backup()
-	{
-		$res .= '<h1>Резервные копии</h1>';
-
-		if ( ! $this->uniq) {
-			srand(time());
-			$uniq_new = 'bckp_'.date('Y-m-d_H-i-s').'_'.substr(md5($this->usrip.'-'.time().'-'.rand(0,9)),-6);
-			$res .= '<div>
-				<a href="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$uniq_new.'">Новая резервная копия</a>
-			</div>';
-			$this->reqres['pntres'] .= $res;
-			return true;
-		}
-		
-		$res .= '<div style="color:#666;margin-bottom:50px;">'.$this->uniq.'</div>';
-
-		$res .= '<div class="actform_res actform_rows"></div>';
-		$res .= '<div class="actform_log actform_rows"></div>';
-
-		$res .= '<div>Инфа о копии</div>';
-
-		if ( ! $this->actfile) {
-			// $actfile = array(
-			// 	'uniq' => $this->uniq,
-			// 	'dt' => time(),
-			// );
-			// $this->bufile('acts', 'set', $this->uniq, $actfile);
-			// $this->actfile = $actfile;
-		}
-
-		if ($this->actfile['completed']) {
-			$res .= '<div>Завершено!</div>';
-		} else {
-			$res .= '<form class="actform" action="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$this->uniq.'&do" method="get">
-				<button class="sbmt" type="button">Запустить</button>
-			</form>';
-		}
-		// $res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
-		
-		$this->reqres['pntres'] .= $res;
-		return true;
-	}
-
 	function page_etalon()
 	{
 		$res .= '<h1>Эталоны</h1>';
@@ -1661,35 +1620,83 @@ class BURAN
 		return true;
 	}
 
+	function page_backup()
+	{
+		$res .= '<h1>Резервные копии</h1>';
+
+		if ( ! $this->uniq) {
+			srand(time());
+			$uniq_new = 'bckp_'.date('Y-m-d_H-i-s').'_'.substr(md5($this->usrip.'-'.time().'-'.rand(0,9)),-6);
+			$res .= '<div>
+				<a href="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$uniq_new.'">Новая резервная копия</a>
+			</div>';
+			$this->reqres['pntres'] .= $res;
+			return true;
+		}
+		
+		$res .= '<div style="color:#666;margin-bottom:50px;">'.$this->uniq.'</div>';
+
+		$res .= '<div class="actform_res actform_rows"></div>';
+		$res .= '<div class="actform_log actform_rows"></div>';
+
+		$res .= '<div>Инфа о копии</div>';
+
+		if ($this->actfile['completed']) {
+			$res .= '<div>Завершено!</div>';
+		} else {
+			$res .= '<form class="actform" action="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$this->uniq.'&do" method="get">
+				<button class="sbmt" type="button">Запустить</button>
+			</form>';
+		}
+		// $res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
+		
+		$this->reqres['pntres'] .= $res;
+		return true;
+	}
+
 	function ob_end($data)
 	{
 		$errnum = '99';
 
 		if ($this->conf('debug')) return false;
 
-		if ( ! $this->actfile || ! is_array($this->actfile)) {
-			$this->actfile = array();
-		}
-		$this->actfile['res']['ok'] = 'y';
-		$this->actfile['res']['completed'] = 'y';
-		$this->actfile['res']['mres'] = array();
-		if (is_array($this->actfile['methods'])) {
-			foreach ($this->actfile['methods'] AS $minfo) {
-				$this->actfile['res']['mres'][] = $minfo;
-				if ($mres['res']['ok'] != 'y') {
-					$this->actfile['res']['ok'] = 'n';
+		$rmvmthdsprms = array(
+			'act_backup' => array(
+			),
+			'fls_archive' => array(
+				'd_queue',
+				'f_queue',
+			),
+			'db_dump' => array(
+			),
+		);
+
+		$actf = $this->actfile;
+		if ( ! $actf || ! is_array($actf)) $actf = array();
+
+		$actf['res'] = array(
+			'tm' => time(),
+			'ok' => 'y',
+			'errors' => array(),
+			'notice' => array(),
+		);
+		$actf['completed'] = 'y';
+		if (is_array($actf['methods'])) {
+			foreach ($actf['methods'] AS $minfo) {
+				if ($minfo['res']['ok'] != 'y') {
+					$actf['res']['ok'] = 'n';
 				}
-				if ($mres['res']['completed'] != 'y') {
-					$this->actfile['res']['completed'] = 'n';
+				if ($minfo['completed'] != 'y') {
+					$actf['completed'] = 'n';
 				}
 			}
 		}
 
-		$this->actfile['res']['tm'] = time();
-		$res = $this->bufile('acts', 'set', $this->uniq, $this->actfile);
+		$res = $this->bufile('acts', 'set', $this->uniq, $actf);
 		if ( ! $res) {
-			$this->actfile['res']['errors'][] = array('num'=>$errnum.'01');
-			$this->actfile['res']['ok'] = 'n';
+			$actf['res']['errors'][] = array('num'=>$errnum.'01');
+			$actf['res']['ok'] = 'n';
+			$actf['completed'] = 'n';
 		}
 
 		$reqres = '';
@@ -1707,8 +1714,17 @@ class BURAN
 			}
 
 		} else {
-			$reqres = json_encode($this->actfile['res']);
 			header('Content-Type: application/json; charset=utf-8');
+			if (is_array($rmvmthdsprms)) {
+				foreach ($rmvmthdsprms AS $mthd => $prms) {
+					if ( ! is_array($prms)) continue;
+					foreach ($prms AS $prm) {
+						if ( ! isset($actf['state'][$prm])) continue;
+						unset($actf['state'][$prm]);
+					}
+				}
+			}
+			$reqres = json_encode($actf);
 		}
 
 		$this->bufile('globinfo', 'set', false, $this->globinfo);
