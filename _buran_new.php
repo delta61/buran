@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('4.0-beta-6');
+$bu = new BURAN('4.0-beta-7');
 
 $mres = $bu->auth($_GET['w']);
 if ($mres['ok'] !== 'y') exit();
@@ -96,7 +96,7 @@ class BURAN
 			'maxtime'     => 25,
 			'maxmemory'   => 109715200, //1024*1024*200
 			// 'maxitems'    => 15000,
-			'maxitems'    => 5000,
+			'maxitems'    => 500,
 
 			'flag_db_dump'             => true,
 			'flag_files_backup'        => true,
@@ -130,7 +130,7 @@ class BURAN
 		'db' => array(
 			// 'maxitems' => 100000,
 			// 'db_dump_maxpartsize' => 52428800, //1024*1024*50
-			'maxitems' => 10000,
+			'maxitems' => 1000,
 			'db_dump_maxpartsize' => 2428800, //1024*1024*50
 		),
 	);
@@ -232,7 +232,6 @@ class BURAN
 			if (
 				$actfile
 				&& is_array($actfile)
-				&& $actfile['uniq'] == $this->uniq
 			) $this->actfile = $actfile;
 		}
 
@@ -515,6 +514,10 @@ class BURAN
 			$minfo = array(
 				'mthd_nm' => 'Дамп базы данных',
 				'method' => $method,
+				'prgrsbr' => array(
+					'max' => 0,
+					'curr' => 0,
+				),
 				'state' => array(
 					'failact_cnt' => 0,
 					'tbl'    => false,
@@ -547,12 +550,6 @@ class BURAN
 		$dumpfile = '/'.$this->domain.'_db_'.$this->uniq;
 		$dumpfilepart = $dumpfile.'_part'.str_pad($part,2,'0',STR_PAD_LEFT);
 		$dumpfilepart .= '.sql';
-
-		if (file_exists($folder.$dumpfilepart)) {
-			// $minfo['res']['notice'][] = array('num'=>$errnum.'02');
-			// $this->actfile['methods'][$method] = $minfo;
-			// return $minfo;
-		}
 
 		$fres = $this->cms();
 		if ( ! $fres) {
@@ -760,26 +757,36 @@ class BURAN
 	function fls_etalon()
 	{
 		$method = 'fls_etalon';
-		$res = array(
-			'method' => $method,
-			'ok' => 'n',
-			'mthd_nm' => 'Эталон файлов',
-		);
+		$errnum = '22';
 
-		if ( ! $this->actfile) {
-			$this->reqres['errors'][] = array('num'=>'0802');
-			$this->reqres['mres'][] = $res;
-			return $res;
-		}
-
-		$state = $this->actfile['states'][$method];
-		if ( ! $state) {
-			$state_new = true;
-			$state = array(
-				'step' => array(
+		$minfo = $this->actfile['methods'][$method];
+		if ( ! $minfo) {
+			$minfo_new = true;
+			$minfo = array(
+				'mthd_nm' => 'Эталон файлов',
+				'method' => $method,
+				'prgrsbr' => array(
+					'max' => 0,
+					'curr' => 0,
+				),
+				'state' => array(
+					'failact_cnt' => 0,
 					'frst' => true,
+					'd_queue' => array('/'),
+					'f_queue' => array(),
+					'files' => 0,
 				),
 			);
+		}
+		$minfo['state']['failact_cnt']++;
+		$minfo['res'] = array(
+			'ok' => 'n',
+			'errors' => array(),
+			'notice' => array(),
+		);
+
+		if ($this->globinfo['methods'][$method]['files']) {
+			$minfo['prgrsbr']['max'] = $this->globinfo['methods'][$method]['files'];
 		}
 
 		$fls_dir = $this->conf('etalon_dir').$this->conf('etalon_fls_dir');
@@ -799,28 +806,22 @@ class BURAN
 		);
 
 		if (file_exists($lst_folder.$lst_file.'_'.$this->uniq)) {
-			$this->reqres['errors'][] = array('num'=>'0909');
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['errors'][] = array('num'=>$errnum.'01');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 
 		$lst_file_all_fh = fopen($lst_folder.$lst_file.$procfile,
-			($state['step']['frst'] ? 'wb' : 'ab')
+			($minfo['state']['frst'] ? 'wb' : 'ab')
 		);
 		if ($lst_file_all_fh) {
-			if ($state['step']['frst']) {
+			if ($minfo['state']['frst']) {
 				$fres = fputcsv($lst_file_all_fh,$fszhs);
 			}
 		} else {
-			$this->reqres['errors'][] = array('num'=>'0905');
-			$this->reqres['mres'][] = $res;
-			return $res;
-		}
-
-		if ($state['step']['frst']) {
-			$state['step']['frst'] = false;
-			$state['step']['d_queue'] = array('/');
-			$state['step']['f_queue'] = array();
+			$minfo['res']['errors'][] = array('num'=>$errnum.'02');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 
 		$this->cms();
@@ -834,12 +835,13 @@ class BURAN
 		$ii = 0;
 		while (true) {
 			while (true) {
-				$file = array_shift($state['step']['f_queue']);
+				$file = array_shift($minfo['state']['f_queue']);
 				if ( ! $file) break;
 
 				$ii++;
 				if ($ii % 2000 == 0) sleep(2);
 				$this->max['cntr'][0]['cnt']++;
+				$minfo['state']['files']++;
 
 				if ($this->max()) {
 					$flag_max = true;
@@ -894,11 +896,11 @@ class BURAN
 			}
 			if ($flag_max) break;
 
-			$state['step']['f_queue'] = array();
-			$nextdir = array_shift($state['step']['d_queue']);
+			$minfo['state']['f_queue'] = array();
+			$nextdir = array_shift($minfo['state']['d_queue']);
 			if ( ! $nextdir) break;
 			if ( ! ($open = opendir($this->droot.$nextdir))) {
-				$this->reqres['errors'][] = array('num'=>'0902');
+				$minfo['res']['errors'][] = array('num'=>$errnum.'03');
 				continue;
 			}
 			while ($file = readdir($open)) {
@@ -915,19 +917,17 @@ class BURAN
 					}
 				}
 				if (is_dir($this->droot.$nextdir.$file)) {
-					$state['step']['d_queue'][] = $nextdir.$file.'/';
+					$minfo['state']['d_queue'][] = $nextdir.$file.'/';
 					continue;
 				}
 				if ( ! is_file($this->droot.$nextdir.$file)) {
 					continue;
 				}
-				$state['step']['f_queue'][] = $nextdir.$file;
+				$minfo['state']['f_queue'][] = $nextdir.$file;
 			}
 		}
 
 		if ($this->max['flag']) {
-			$res['max'] = true;
-
 		} else {
 			copy(
 				$lst_folder.$lst_file.$procfile,
@@ -950,7 +950,9 @@ class BURAN
 				);
 			}
 
-			$res['completed'] = 'y';
+			$minfo['completed'] = 'y';
+
+			$this->globinfo['methods'][$method]['files'] = $minfo['state']['files'];
 		}
 
 		if ($lst_file_all_fh) fclose($lst_file_all_fh);
@@ -962,46 +964,57 @@ class BURAN
 			$this->tarClose();
 		}
 
-		$res['ok'] = 'y';
-		$this->actfile['states'][$method] = $state;
-		$this->reqres['mres'][] = $res;
-		return $res;
+		$minfo['state']['frst'] = false;
+		$minfo['prgrsbr']['curr'] = $minfo['state']['files'];
+
+		$minfo['res']['ok'] = 'y';
+		$minfo['state']['failact_cnt'] = 0;
+		$this->actfile['methods'][$method] = $minfo;
+		return $minfo;
 	}
 
 	function db_etalon()
 	{
 		$method = 'db_etalon';
-		$res = array(
-			'method' => $method,
-			'ok' => 'n',
-			'mthd_nm' => 'Эталон базы данных',
-		);
-
-		if ( ! $this->actfile) {
-			$this->reqres['errors'][] = array('num'=>'0501');
-			$this->reqres['mres'][] = $res;
-			return $res;
-		}
+		$errnum = '23';
 
 		$maxitems = intval($this->conf('maxitems','db'));
 
-		$state = $this->actfile['states'][$method];
-		if ( ! $state) {
-			$state_new = true;
-			$state = array(
-				'tbl'    => false,
-				'limit'  => $maxitems,
-				'offset' => 0,
-				'keys'   => '',
-				'cnt'    => 0,
+		$minfo = $this->actfile['methods'][$method];
+		if ( ! $minfo) {
+			$minfo_new = true;
+			$minfo = array(
+				'mthd_nm' => 'Эталон базы данных',
+				'method' => $method,
+				'prgrsbr' => array(
+					'max' => 0,
+					'curr' => 0,
+				),
+				'state' => array(
+					'failact_cnt' => 0,
+					'frst' => true,
+					'tbl'    => false,
+					'limit'  => $maxitems,
+					'offset' => 0,
+					'keys'   => '',
+					'itms'   => 0,
+				),
 			);
 		}
-		$state['cnt']++;
+		$minfo['state']['failact_cnt']++;
+		$minfo['res'] = array(
+			'ok' => 'n',
+			'errors' => array(),
+			'notice' => array(),
+		);
+
+		if ($this->globinfo['methods'][$method]['itms']) {
+			$minfo['prgrsbr']['max'] = $this->globinfo['methods'][$method]['itms'];
+		}
 
 		$dir = $this->conf('etalon_dir').$this->conf('etalon_db_dir');
 		$folder = $this->droot.$this->mdir.$dir;
 		if ( ! file_exists($folder)) mkdir($folder,0755,true);
-		$res['dir'] = $dir;
 
 		$db_file = '/etalon_db';
 		$allfile  = '__last';
@@ -1016,50 +1029,51 @@ class BURAN
 		);
 
 		if (file_exists($folder.$db_file.'_'.$this->uniq)) {
-			$this->reqres['errors'][] = array('num'=>'0502');
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['errors'][] = array('num'=>$errnum.'01');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 
 		$db_file_all_fh = fopen($folder.$db_file.$procfile,
-			($state['cnt'] === 1 ? 'wb' : 'ab')
+			($minfo['state']['frst'] ? 'wb' : 'ab')
 		);
 		if ($db_file_all_fh) {
-			if ($state['cnt'] === 1) {
+			if ($minfo['state']['frst']) {
 				$fres = fputcsv($db_file_all_fh,$fszhs);
 			}
 		} else {
-			$this->reqres['errors'][] = array('num'=>'0503');
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['errors'][] = array('num'=>$errnum.'02');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 
 		$fres = $this->cms();
 		if ( ! $fres) {
-			$this->reqres['errors'][] = array('num'=>'0504');
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['notice'][] = array('num'=>$errnum.'03');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 		$fres = $this->db_access();
 		if ( ! $fres) {
-			$this->reqres['errors'][] = array('num'=>'0505');
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['notice'][] = array('num'=>$errnum.'04');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 		$dbcres = $this->db_connect();
 		if ($dbcres['ok'] != 'y') {
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['errors'][] = array('num'=>$errnum.'05');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 
 		$dbres = $this->db->query("SHOW TABLES");
 		if ( ! $dbres) {
-			$this->reqres['errors'][] = array('num'=>'0506');
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['errors'][] = array('num'=>$errnum.'06');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 
-		$limit = intval($state['limit']);
+		$limit = intval($minfo['state']['limit']);
 		$this->max['cntr'][0] = array(
 			'nm'  => 'maxitems',
 			'max' => $limit,
@@ -1069,20 +1083,20 @@ class BURAN
 		while ($row = $dbres->fetch_row()) {
 
 			if (
-				$state['tbl']
-				&& $row[0] != $state['tbl']
+				$minfo['state']['tbl']
+				&& $row[0] != $minfo['state']['tbl']
 			) continue;
 			$ii_tbl = $row[0];
-			$state['tbl'] = false;
+			$minfo['state']['tbl'] = false;
 
-			if ( ! $state['offset']) {
+			if ( ! $minfo['state']['offset']) {
 
 				$dbres2 = $this->db->query("SELECT *
 					FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
 					WHERE TABLE_NAME=N'{$row[0]}'
 					ORDER BY IF(CONSTRAINT_NAME='PRIMARY',0,1),CONSTRAINT_NAME,ORDINAL_POSITION");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0507');
+					$minfo['res']['errors'][] = array('num'=>$errnum.'07');
 					continue;
 				}
 				$keys = "";
@@ -1097,20 +1111,21 @@ class BURAN
 					$keys .= ($keys?",":"")."`".$row2['COLUMN_NAME']."`";
 					$keys_ar[$row2['COLUMN_NAME']] = $row2['COLUMN_NAME'];
 				}
-				$state['keys'] = $keys;
-				$state['keys_ar'] = $keys_ar;
+				$minfo['state']['keys'] = $keys;
+				$minfo['state']['keys_ar'] = $keys_ar;
 
 				$dbres2 = $this->db->query("SHOW CREATE TABLE `{$row[0]}`");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0508');
+					$minfo['res']['errors'][] = array('num'=>$errnum.'08');
 					continue;
 				}
+
 				$row2 = $dbres2->fetch_row();
 				$tblhash = md5($row2[1]);
 
 				$dbres2 = $this->db->query("SELECT * FROM `{$row[0]}` LIMIT 1");
 				if ( ! $dbres2) {
-					$this->reqres['errors'][] = array('num'=>'0509');
+					$minfo['res']['errors'][] = array('num'=>$errnum.'09');
 					continue;
 				}
 				$row2 = $dbres2->fetch_assoc();
@@ -1140,14 +1155,14 @@ class BURAN
 			}
 
 			$q = "SELECT * FROM `{$row[0]}`";
-			if ($state['keys']) $q .= " ORDER BY ".$state['keys'];
-			$q .= " LIMIT ".($limit+10)." OFFSET ".$state['offset'];
+			if ($minfo['state']['keys']) $q .= " ORDER BY ".$minfo['state']['keys'];
+			$q .= " LIMIT ".($limit+10)." OFFSET ".$minfo['state']['offset'];
 
 			$foomem1 = memory_get_peak_usage(true);
 
 			$dbres2 = $this->db->query($q);
 			if ( ! $dbres2) {
-				$this->reqres['errors'][] = array('num'=>'0510');
+				$minfo['res']['errors'][] = array('num'=>$errnum.'10');
 				break;
 			}
 
@@ -1166,12 +1181,13 @@ class BURAN
 			if ( ! $limit || $limit > $maxitems) {
 				$limit = $maxitems;
 			}
-			$state['limit'] = $limit;
+			$minfo['state']['limit'] = $limit;
 
 			$ii = 0;
 			while ($row2 = $dbres2->fetch_assoc()) {
 				$ii++;
 				$this->max['cntr'][0]['cnt']++;
+				$minfo['state']['itms']++;
 
 				$dbrow = "";
 				$dbrow_keys = "";
@@ -1179,7 +1195,7 @@ class BURAN
 					$val = $this->db->real_escape_string($val);
 					$dbrow .= ($dbrow?",":"")."`{$key}`='{$val}'";
 					
-					if ($state['keys_ar'][$key]) {
+					if ($minfo['state']['keys_ar'][$key]) {
 						$dbrow_keys .= ($dbrow_keys?",":"")."`{$key}`='{$val}'";
 					}
 				}
@@ -1203,8 +1219,8 @@ class BURAN
 			}
 
 			if ( ! $this->max['flag']) {
-				$state['offset'] = 0;
-				$state['keys'] = '';
+				$minfo['state']['offset'] = 0;
+				$minfo['state']['keys'] = '';
 			}
 
 			if ($this->max()) {
@@ -1213,12 +1229,10 @@ class BURAN
 			if ($flag_max) break;
 		}
 
-		$state['tbl'] = $ii_tbl;
-		$state['offset'] += $ii;
+		$minfo['state']['tbl'] = $ii_tbl;
+		$minfo['state']['offset'] += $ii;
 
 		if ($this->max['flag']) {
-			$res['max'] = true;
-
 		} else {
 			copy(
 				$folder.$db_file.$procfile,
@@ -1241,44 +1255,49 @@ class BURAN
 				);
 			}
 
-			$res['completed'] = 'y';
+			$minfo['completed'] = 'y';
+
+			$this->globinfo['methods'][$method]['itms'] = $minfo['state']['itms'];
 		}
 
-		$res['ok'] = 'y';
-		$this->actfile['states'][$method] = $state;
-		$this->reqres['mres'][] = $res;
-		return $res;
+		$minfo['state']['frst'] = false;
+		$minfo['prgrsbr']['curr'] = $minfo['state']['itms'];
+
+		$minfo['res']['ok'] = 'y';
+		$minfo['state']['failact_cnt'] = 0;
+		$this->actfile['methods'][$method] = $minfo;
+		return $minfo;
 	}
 
 	function act_etalon()
 	{
 		$method = 'act_etalon';
-		$res = array(
-			'method' => $method,
-			'ok' => 'n',
-		);
+		$errnum = '21';
 
-		if ( ! $this->actfile) {
-			$this->reqres['errors'][] = array('num'=>'0802');
-			$this->reqres['mres'][] = $res;
-			return $res;
-		}
-
-		$state = $this->actfile['states'][$method];
-		if ( ! $state) {
-			$state_new = true;
-			$state = array(
-				'step' => array(
-					'num' => 1,
+		$minfo = $this->actfile['methods'][$method];
+		if ( ! $minfo) {
+			$minfo_new = true;
+			$minfo = array(
+				'mthd_nm' => 'создание эталона',
+				'method' => $method,
+				'state' => array(
+					'failact_cnt' => 0,
+					'step' => array(
+						'num' => 1,
+					),
 				),
 			);
 		}
-		$this->actfile['states'][$method] = $state;
+		$minfo['state']['failact_cnt']++;
+		$minfo['res'] = array(
+			'ok' => 'n',
+			'errors' => array(),
+			'notice' => array(),
+		);
 
 		$dir = $this->conf('etalon_dir');
 		$folder = $this->droot.$this->mdir.$dir;
 		if ( ! file_exists($folder)) mkdir($folder,0755,true);
-		$res['dir'] = $dir;
 
 		$procfile = '_process';
 		$archfile = '/'.$this->domain.'_etalon_'.$this->uniq;
@@ -1286,9 +1305,9 @@ class BURAN
 		if ($this->zip) {
 			$archfile .= '.zip';
 			if (file_exists($folder.$archfile)) {
-				$this->reqres['errors'][] = array('num'=>'1008');
-				$this->reqres['mres'][] = $res;
-				return $res;
+				$minfo['res']['errors'][] = array('num'=>$errnum.'01');
+				$this->actfile['methods'][$method] = $minfo;
+				return $minfo;
 			}
 			$ziptp = $state['step']['num'] === 1
 				? ZipArchive::CREATE | ZipArchive::OVERWRITE
@@ -1300,53 +1319,52 @@ class BURAN
 			$archfile .= '.tar';
 			if ($this->targzisavailable) $archfile .= '.gz';
 			if (file_exists($folder.$archfile)) {
-				$this->reqres['errors'][] = array('num'=>'1009');
-				$this->reqres['mres'][] = $res;
-				return $res;
+				$minfo['res']['errors'][] = array('num'=>$errnum.'02');
+				$this->actfile['methods'][$method] = $minfo;
+				return $minfo;
 			}
-			$tartp = $state['step']['num'] === 1 ? 'w' : 'a';
+			$tartp = $minfo['state']['step']['num'] === 1 ? 'w' : 'a';
 			$tarres = $this->tarOpen($folder.$archfile.$procfile,$tartp);
 			if ( ! $tarres) $this->tar = false;
 		}
 
 		if ( ! $this->zip && ! $this->tar) {
-			$this->reqres['errors'][] = array('num'=>'1010');
-			$this->reqres['mres'][] = $res;
-			return $res;
+			$minfo['res']['errors'][] = array('num'=>$errnum.'03');
+			$this->actfile['methods'][$method] = $minfo;
+			return $minfo;
 		}
 
-		$res['archfile'] = $archfile;
-
-		if ($state['step']['num'] === 1) {
+		if ($minfo['state']['step']['num'] === 1) {
 			$step_flag = true;
 
 			$subres = $this->db_etalon();
 
 			if (
 				$subres['completed'] == 'y'
-				|| $subres['ok'] != 'y'
+				|| (
+					$subres['res']['ok'] != 'y'
+					&& $subres['state']['failact_cnt'] >= 3
+				)
 			) $nextstep = true;
 		}
 
-		if ($state['step']['num'] === 2) {
+		if ($minfo['state']['step']['num'] === 2) {
 			$step_flag = true;
 
 			$subres = $this->fls_etalon();
 
 			if (
 				$subres['completed'] == 'y'
-				|| $subres['ok'] != 'y'
+				|| (
+					$subres['res']['ok'] != 'y'
+					&& $subres['state']['failact_cnt'] >= 3
+				)
 			) $nextstep = true;
 		}
 
 		if ($step_flag) {
 			if ($nextstep) {
-				$res['nextstep'] = true;
-				$state = array(
-					'step' => array(
-						'num' => $state['step']['num']+1,
-					),
-				);
+				$minfo['state']['step']['num']++;
 			}
 		} else {
 			$foores = rename(
@@ -1354,18 +1372,18 @@ class BURAN
 				$folder.$archfile
 			);
 			if ( ! $foores) {
-				$this->reqres['errors'][] = array('num'=>'1004');
-				$this->reqres['mres'][] = $res;
-				return $res;
+				$minfo['res']['errors'][] = array('num'=>$errnum.'04');
+				$this->actfile['methods'][$method] = $minfo;
+				return $minfo;
 			}
 
-			$res['completed'] = 'y';
+			$minfo['completed'] = 'y';
 		}
 
-		$res['ok'] = 'y';
-		$this->actfile['states'][$method] = $state;
-		$this->reqres['mres'][] = $res;
-		return $res;
+		$minfo['res']['ok'] = 'y';
+		$minfo['state']['failact_cnt'] = 0;
+		$this->actfile['methods'][$method] = $minfo;
+		return $minfo;
 	}
 
 	function fls_remove($path) {
@@ -1466,7 +1484,7 @@ class BURAN
 			$this->reqres['errors'][] = array('num'=>'1301');
 			return $res;
 		} elseif ( ! $state || ! is_array($state)) {
-			$state_new = true;
+			$minfo_new = true;
 			$state = array(
 				'files'     => 0,
 				'd_queue'   => array($path),
@@ -1593,28 +1611,18 @@ class BURAN
 		
 		$res .= '<div style="color:#666;margin-bottom:50px;">'.$this->uniq.'</div>';
 
-		$res .= '<div class="actform_res"></div>';
-		$res .= '<div class="actform_log"></div>';
+		$res .= '<div class="actform_res actform_rows"></div>';
+		$res .= '<div class="actform_log actform_rows"></div>';
 
 		$res .= '<div>Инфа об эталоне</div>';
 
-		if ( ! $this->actfile) {
-			$actfile = array(
-				'uniq' => $this->uniq,
-				'dt' => time(),
-			);
-			// $this->bufile('acts', 'set', $this->uniq, $actfile);
-			$this->actfile = $actfile;
-		}
-
-		if ($actfile['completed']) {
+		if ($this->actfile['completed'] == 'y') {
 			$res .= '<div>Завершено!</div>';
 		} else {
 			$res .= '<form class="actform" action="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$this->uniq.'&do" method="get">
 				<button class="sbmt" type="button">Запустить</button>
 			</form>';
 		}
-		// $res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
 		
 		$this->reqres['pntres'] .= $res;
 		return true;
@@ -1641,14 +1649,13 @@ class BURAN
 
 		$res .= '<div>Инфа о копии</div>';
 
-		if ($this->actfile['completed']) {
+		if ($this->actfile['completed'] == 'y') {
 			$res .= '<div>Завершено!</div>';
 		} else {
 			$res .= '<form class="actform" action="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&uniq='.$this->uniq.'&do" method="get">
 				<button class="sbmt" type="button">Запустить</button>
 			</form>';
 		}
-		// $res .= '<code><pre>'.print_r($this->actfile,1).'</pre></code>';
 		
 		$this->reqres['pntres'] .= $res;
 		return true;
@@ -1719,8 +1726,8 @@ class BURAN
 				foreach ($rmvmthdsprms AS $mthd => $prms) {
 					if ( ! is_array($prms)) continue;
 					foreach ($prms AS $prm) {
-						if ( ! isset($actf['state'][$prm])) continue;
-						unset($actf['state'][$prm]);
+						if ( ! isset($actf['methods'][$mthd]['state'][$prm])) continue;
+						unset($actf['methods'][$mthd]['state'][$prm]);
 					}
 				}
 			}
