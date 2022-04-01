@@ -1,4 +1,6 @@
 (function($){
+
+	var CodeMirror_editor;
 	
 	$(document).ready(function(){
 		$('.actform').each(function(){
@@ -6,9 +8,31 @@
 				return false;
 			});
 		});
+
+		if ($('.cdmrrinp').length) {
+			$('.cdmrrinp').each(function(){
+				CodeMirror_editor = CodeMirror.fromTextArea($(this)[0],{
+					matchBrackets: true,
+					lineWrapping: true,
+					lineNumbers: true,
+					tabSize: 4,
+					indentUnit: 4,
+					indentWithTabs: true,
+					mode: "application/json",
+					json: true,
+					gutters: ["CodeMirror-lint-markers"],
+					lint: true
+				});
+				CodeMirror_editor.on("renderLine",function(){
+				});
+			});
+		}
 	});
 	
 	$(document).on('click','.actform .sbmt',function(){
+		if (CodeMirror_editor) {
+			CodeMirror_editor.save();
+		}
 		var frm = $(this).parents('.actform');
 		var prms = {
 			uri: frm.attr('action'),

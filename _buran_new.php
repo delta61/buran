@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('4.0-beta-7');
+$bu = new BURAN('4.0-beta-8');
 
 $mres = $bu->auth($_GET['w']);
 if ($mres['ok'] !== 'y') exit();
@@ -36,6 +36,10 @@ if ('etalon' == $bu->act) {
 	$pntres = $bu->page_etalon();
 	exit();
 }
+if ('settings' == $bu->act) {
+	$bu->page_settings();
+	exit();
+}
 
 /*
 if ('info' == $bu->act) {
@@ -46,11 +50,6 @@ if ('info' == $bu->act) {
 if ('update' == $bu->act) {
 	$file = $_GET['file'];
 	$mres = $bu->update($file);
-	$bu->res['mres'][] = $mres;
-}
-if ('setconfig' == $bu->act) {
-	$data = $_POST['data'];
-	$mres = $bu->setconfig($data);
 	$bu->res['mres'][] = $mres;
 }
 
@@ -89,51 +88,6 @@ exit();
 
 class BURAN
 {
-	public $conf = array(
-		'def' => array(
-			'debug' => 0,
-
-			'maxtime'     => 25,
-			'maxmemory'   => 109715200, //1024*1024*200
-			// 'maxitems'    => 15000,
-			'maxitems'    => 500,
-
-			'flag_db_dump'             => true,
-			'flag_files_backup'        => true,
-			// 'files_backup_maxpartsize' => 209715200, //1024*1024*200
-			'files_backup_maxpartsize' => 50715200, //1024*1024*200
-
-			'etalon_ext' => '/.php/.htaccess/.html/.htm/.js/.inc/.css/.sass/.scss/.less/.tpl/.twig/.ini/.json/',
-
-			'fls_archive_without_ext' => '', // '/.jpg/.jpeg/.png/',
-			'fls_archive_without_dir' => array(
-				// '/_buran/',
-				// '/assets/images/',
-				// '/assets/cache/images/',
-				// '/box/',
-			),
-
-			'etalon_mode' => 'all', // [all, list, files]
-
-			'etalon_dir'     => '/etalon',
-			'backup_dir'     => '/backup',
-			'etalon_db_dir'  => '/db',
-			'etalon_fls_dir' => '/files',
-			'etalon_lst_dir' => '/list',
-			'etalon_cmpr_dir' => '/cmpr',
-
-			'log_dir' => '/log',
-
-			'max_etalon_txt_file' => 52428800, //1024*1024*50
-		),
-
-		'db' => array(
-			// 'maxitems' => 100000,
-			// 'db_dump_maxpartsize' => 52428800, //1024*1024*50
-			'maxitems' => 1000,
-			'db_dump_maxpartsize' => 2428800, //1024*1024*50
-		),
-	);
 
 	// ----------------------------------------------------
 
@@ -158,7 +112,9 @@ class BURAN
 		$this->droot = dirname(dirname(__FILE__));
 		$this->broot = dirname(__FILE__);
 
-		$this->http  = (
+		$this->config_init();
+
+		$this->http = (
 			(isset($_SERVER['SERVER_PORT']) && $_SERVER['SERVER_PORT'] == '443') ||
 			(isset($_SERVER['HTTP_PORT']) && $_SERVER['HTTP_PORT']     == '443') ||
 			(isset($_SERVER['HTTP_HTTPS']) && $_SERVER['HTTP_HTTPS']   == 'on') ||
@@ -235,17 +191,70 @@ class BURAN
 			) $this->actfile = $actfile;
 		}
 
-		$userconfig = $this->bufile('config_value','get');
-		if (is_array($userconfig)) {
-			foreach ($this->conf AS $key => $row) {
-				if ( ! $userconfig[$key] || ! is_array($userconfig[$key])) {
-					continue;
+		$res = ob_start(array($this,'ob_end'));
+	}
+
+	function config_init()
+	{
+		$def = array(
+			'debug' => 0,
+
+			'maxtime'     => 25,
+			'maxmemory'   => 109715200, //1024*1024*200
+			// 'maxitems'    => 15000,
+			'maxitems'    => 500,
+
+			'flag_db_dump'             => true,
+			'flag_files_backup'        => true,
+			// 'files_backup_maxpartsize' => 209715200, //1024*1024*200
+			'files_backup_maxpartsize' => 50715200, //1024*1024*200
+
+			'etalon_ext' => '/.php/.htaccess/.html/.htm/.js/.inc/.css/.sass/.scss/.less/.tpl/.twig/.ini/.json/',
+
+			'fls_archive_without_ext' => '', // '/.jpg/.jpeg/.png/',
+			'fls_archive_without_dir' => array(
+				// '/_buran/',
+				// '/assets/images/',
+				// '/assets/cache/images/',
+				// '/box/',
+			),
+
+			'etalon_mode' => 'all', // [all, list, files]
+
+			'etalon_dir'     => '/etalon',
+			'backup_dir'     => '/backup',
+			'etalon_db_dir'  => '/db',
+			'etalon_fls_dir' => '/files',
+			'etalon_lst_dir' => '/list',
+			'etalon_cmpr_dir' => '/cmpr',
+
+			'log_dir' => '/log',
+
+			'max_etalon_txt_file' => 52428800, //1024*1024*50
+
+			// 'maxitems' => 100000,
+			// 'db_dump_maxpartsize' => 52428800, //1024*1024*50
+			'db_maxitems' => 1000,
+			'db_dump_maxpartsize' => 2428800, //1024*1024*50
+		);
+
+		$conf = $this->bufile('config','get');
+
+		$res = $def;
+		if ($conf && is_array($conf)) {
+			foreach ($conf AS $key => $row) {
+				if ( ! isset($def[$key])) {
+					$res[$key] = $row;
+				} else {
+					$res[$key] = array_merge(
+						$def[$key],
+						$row
+					);
 				}
-				$this->conf[$key] = array_merge($this->conf[$key],$userconfig[$key]);
 			}
 		}
 
-		$res = ob_start(array($this,'ob_end'));
+		$this->conf = $res;
 	}
 
 	// --------------------------------------------
@@ -506,7 +515,7 @@ class BURAN
 		$method = 'db_dump';
 		$errnum = '13';
 
-		$maxitems = intval($this->conf('maxitems','db'));
+		$maxitems = intval($this->conf('db_maxitems'));
 
 		$minfo = $this->actfile['methods'][$method];
 		if ( ! $minfo) {
@@ -978,7 +987,7 @@ class BURAN
 		$method = 'db_etalon';
 		$errnum = '23';
 
-		$maxitems = intval($this->conf('maxitems','db'));
+		$maxitems = intval($this->conf('maxitems'));
 
 		$minfo = $this->actfile['methods'][$method];
 		if ( ! $minfo) {
@@ -1595,6 +1604,39 @@ class BURAN
 		return true;
 	}
 
+	function page_settings()
+	{
+		$res .= '<h1>Настройки</h1>';
+
+		$conf = json_encode($this->conf, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+
+		$res .= '<form class="actform" action="'.$this->mfile.'?w='.$_GET['w'].'&a='.$_GET['a'].'&save" method="get">';
+
+		$res .= '<div class="cdmrrwrp">
+			<textarea class="cdmrrinp" id="cdmrr" name="sttgs">'.$conf.'</textarea>
+		</div>';
+
+		$res .= '<button class="sbmt" type="button">Сохранить</button>
+		</form>';
+
+		$res .= '<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+
+		<script src="https://unpkg.com/jsonlint@1.6.3/web/jsonlint.js"></script>
+
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.min.js"></script>
+		<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/json-lint.min.js"></script>
+
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css" />
+		<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/lint/lint.min.css" />
+		
+		<script>
+		</script>';
+
+		$this->reqres['pntres'] .= $res;
+		return true;
+	}
+
 	function page_etalon()
 	{
 		$res .= '<h1>Эталоны</h1>';
@@ -1764,6 +1806,7 @@ class BURAN
 				<div class="lmitm"><a href="{$baselink}&a=main">Главная</a></div>
 				<div class="lmitm"><a href="{$baselink}&a=backup">Резервные копии</a></div>
 				<div class="lmitm"><a href="{$baselink}&a=etalon">Эталоны</a></div>
+				<div class="lmitm"><a href="{$baselink}&a=settings">Настройки</a></div>
 			</div><!--mcol_lft1-->
 		</div><!--mcol_lft1-->
 
@@ -2224,14 +2267,10 @@ TPL;
 				break;
 
 			case 'config':
-				$exitline = true;
-				$file = $type.'.php';
-				break;
-			case 'config_value':
 				$serialize = true;
 				$base64_e = true;
 				$exitline = true;
-				$file = 'config.php';
+				$file = $type.'.php';
 				break;
 
 			case 'acts':
@@ -2291,20 +2330,6 @@ TPL;
 				$cres = copy($folder.$file,$folder.$file.'.back.php');
 				if ( ! $cres) {
 					$this->reqres['errors'][] = array('num'=>'0602');
-					return false;
-				}
-			}
-
-			if ('config' == $type) {
-				$tmp = base64_decode($body);
-				if ($body && $tmp) {
-					$tmp = unserialize($tmp);
-					if ( ! is_array($tmp)) {
-						$this->reqres['errors'][] = array('num'=>'0603');
-						return false;
-					}
-				} else {
-					$this->reqres['errors'][] = array('num'=>'0604');
 					return false;
 				}
 			}
@@ -2402,18 +2427,6 @@ TPL;
 		} else {
 			$this->reqres['errors'][] = array('num'=>'0503');
 		}
-		return $res;
-	}
-
-	function setconfig($data)
-	{
-		$res = array(
-			'method' => 'setconfig',
-			'ok' => 'n',
-		);
-		$fres = $this->bufile('config','set','',$data);
-		if ($fres) $res['ok'] = 'y';
-		else $this->reqres['errors'][] = array('num'=>'0401');
 		return $res;
 	}
 
@@ -2523,9 +2536,9 @@ TPL;
 		return $data;
 	}
 
-	function conf($name,$tp='def')
+	function conf($name)
 	{
-		return isset($this->conf[$tp][$name]) ? $this->conf[$tp][$name] : NULL;
+		return isset($this->conf[$name]) ? $this->conf[$name] : NULL;
 	}
 
 	function max()
