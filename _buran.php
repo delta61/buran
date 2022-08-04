@@ -9,7 +9,7 @@
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.7-beta');
+$bu = new BURAN('3.7-beta2');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -2574,6 +2574,27 @@ class BURAN
 			);
 			return true;
 		}
+
+		ob_start();
+		@include_once($this->droot.'/vars.inc.php');
+		ob_end_clean();
+		if (
+			$MYSQL_HOST
+			&& $MYSQL_USER
+			&& $MYSQL_PASSWORD
+			&& $MYSQL_DB_NAME
+		) {
+			$this->cms      = 'netcat';
+			$this->cms_ver  = '';
+			$this->cms_date = '';
+			$this->cms_name = '';
+			$this->cache_dirs = array(
+				'/netcat_cache/',
+				'/netcat_dump/',
+				'/netcat_trash/',
+			);
+			return true;
+		}
 		return false;
 	}
 
@@ -2679,12 +2700,24 @@ class BURAN
 
 		if ($this->cms == 'bitrix') {
 			ob_start();
-			@include_once($this->droot.'/bitrix/php_interface/dbconn.php');
+			@include($this->droot.'/bitrix/php_interface/dbconn.php');
 			ob_end_clean();
 			$this->db_host = $DBHost;
 			$this->db_user = $DBLogin;
 			$this->db_pwd  = $DBPassword;
 			$this->db_name = $DBName;
+			return true;
+		}
+
+		if ($this->cms == 'netcat') {
+			ob_start();
+			@include($this->droot.'/vars.inc.php');
+			ob_end_clean();
+			$this->db_host = $MYSQL_HOST;
+			$this->db_user = $MYSQL_USER;
+			$this->db_pwd  = $MYSQL_PASSWORD;
+			$this->db_name = $MYSQL_DB_NAME;
+			$this->db_charset = $MYSQL_CHARSET;
 			return true;
 		}
 		return false;
