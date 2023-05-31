@@ -2,14 +2,14 @@
 /**
  * Buran_
  *
- * @copyright 2021 DELTA https://delta-ltd.ru/
+ * @copyright 2023 DELTA https://delta-ltd.ru/
  * @author    <sergey.it@delta-ltd.ru>
  */
 
 error_reporting(0);
 ini_set('display_errors','off');
 
-$bu = new BURAN('3.7-beta2');
+$bu = new BURAN('3.7-beta3');
 
 $bu->res_ctp = 'json';
 $mres = $bu->auth($_GET['w']);
@@ -214,7 +214,7 @@ class BURAN
 			$uniq = str_replace(array('/','..',' '),'',$uniq);
 			$this->uniq = $uniq;
 		}
-		if ( ! $this->uniq) $this->uniq = date('Y-m-d-H-i-s');
+		if ( ! isset($this->uniq) || ! $this->uniq) $this->uniq = date('Y-m-d-H-i-s');
 
 		$userconfig = $this->bufile('config_value','get');
 		if (is_array($userconfig)) {
